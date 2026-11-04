@@ -52,7 +52,11 @@
     flag('data-mc-condensed', d.condensed);
     flag('data-mc-hide-logo', d.hideLogo);
     flag('data-mc-hide-feedback', d.hideFeedback);
-    flag('data-mc-todo', settings.todo.enabled); // hides Canvas's own To Do (see dashboard.css)
+    // Our to-do panel only lives on the dashboard, so only there does it replace Canvas's
+    // right sidebar (see dashboard.css). Elsewhere that sidebar holds real page content,
+    // e.g. the grade total and options on a class's Grades page, so it must stay.
+    const onDash = location.pathname === '/' || location.pathname === '/dashboard';
+    flag('data-mc-todo', settings.todo.enabled && onDash);
     if (d.font === 'default') root.removeAttribute('data-mc-font');
     else root.setAttribute('data-mc-font', d.font);
 
@@ -62,6 +66,168 @@
     else st.removeProperty('--mc-accent');
     st.setProperty('--mc-grad-a', d.gradA);
     st.setProperty('--mc-grad-b', d.gradB);
+    whenDomReady(themeFix);
+  }
+
+  /* Theme fixer. Canvas pages (Inbox, Courses/Groups/Calendar trays, Calendar,
+   * React pages) paint plenty of light boxes and dark text from generated styles
+   * that stylesheet rules can't target reliably. In dark mode this measures what the
+   * page actually paints and marks the misfits so dark.css can recolour them:
+   *   data-mc-lightfix="n"  light neutral box (white/grey)  -> theme surface
+   *   data-mc-lightfix="t"  light tinted box (highlight)    -> accent-tinted surface
+   *   data-mc-textfix       text/icon too dark to read on its background -> theme text
+   * Changed parts are re-checked inside the MutationObserver callback, which runs
+   * before the browser paints, so nothing flashes. */
+  const LF = 'data-mc-lightfix', TF = 'data-mc-textfix';
+  const FIX_EVENTS = ['mouseover', 'mouseout', 'click', 'focusin'];
+  const SKIP = new Set(['IMG', 'VIDEO', 'CANVAS', 'IFRAME', 'PICTURE', 'SOURCE', 'SCRIPT', 'STYLE', 'LINK', 'META', 'NOSCRIPT', 'TEMPLATE', 'BR']);
+  const MAX_FULL_SCAN = 12000; // huge pages (e.g. gradebook): rely on the per-change checks only
+  let fixObs = null, fixTimer = 0, accRgb = null;
+  const fixActive = () => root.hasAttribute('data-mc-dark');
+  const rgbOf = (c) => {
+    // Only plain rgb()/rgba(); anything else (e.g. our own color-mix result) counts as unknown.
+    const m = /^rgba?\(([^)]+)\)$/.exec(c || '');
+    if (!m) return null;
+    const v = m[1].split(/[\s,/]+/).filter(Boolean).map(Number);
+    return v.length >= 3 ? [v[0], v[1], v[2], v.length > 3 ? v[3] : 1] : null;
+  };
+  const lin = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+  const relLum = ([r, g, b]) => 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+  const contrast = (a, b) => { const x = relLum(a), y = relLum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+  function readAccent() {
+    const hex = getComputedStyle(root).getPropertyValue('--mc-accent').trim();
+    const m = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(hex);
+    accRgb = m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : null;
+  }
+  const isAccent = (c) => accRgb && Math.abs(accRgb[0] - c[0]) + Math.abs(accRgb[1] - c[1]) + Math.abs(accRgb[2] - c[2]) < 12;
+
+  /** 'n' or 't' if the element paints a light background that doesn't belong in dark mode. */
+  function lightKind(el, cs) {
+    // Colours set inline are deliberate (course colours on cards, calendar events, swatches).
+    if (el.style && (el.style.backgroundColor || el.style.background)) return '';
+    const c = rgbOf(cs.backgroundColor);
+    if (!c || c[3] < 0.5 || relLum(c) < 0.45 || isAccent(c)) return '';
+    const chroma = Math.max(c[0], c[1], c[2]) - Math.min(c[0], c[1], c[2]);
+    if (chroma > 60) return ''; // vivid colours (badges, highlighter) are meant to stand out
+    return chroma <= 12 ? 'n' : 't';
+  }
+  /** Colour actually behind el: the nearest ancestor (or el) with an opaque fill. */
+  function bgBehind(el, memo) {
+    const chain = [];
+    let found = null;
+    for (let p = el; p; p = p.parentElement) {
+      if (memo.has(p)) { found = memo.get(p); break; }
+      chain.push(p);
+      const cs = getComputedStyle(p);
+      if (cs.backgroundImage !== 'none') { found = 'unknown'; break; } // photos/gradients: can't judge
+      if (p.hasAttribute(LF)) { found = 'dark'; break; }
+      const c = rgbOf(cs.backgroundColor);
+      if (c && c[3] >= 0.5) { found = c; break; }
+    }
+    if (!found) found = 'dark'; // reached the top: the theme background
+    for (const p of chain) memo.set(p, found);
+    return found;
+  }
+  const TEXTY = new Set(['I', 'svg', 'INPUT', 'TEXTAREA', 'SELECT']);
+  const hasOwnText = (el) => {
+    if (TEXTY.has(el.tagName)) return true;
+    for (const n of el.childNodes) if (n.nodeType === 3 && n.data.trim()) return true;
+    return false;
+  };
+  // Measure without our own overrides, so things that stop needing a fix are un-marked.
+  // Marked elements whose own class/style haven't changed keep their marks during the
+  // page-wide backstop scan (re-measuring them means un-marking, which costs a restyle).
+  const markedSig = new WeakMap();
+  const sigOf = (el) => (el.getAttribute('class') || '') + '|' + (el.getAttribute('style') || '');
+  function checkEl(el, memo, reuse = false) {
+    if (SKIP.has(el.tagName) || (el instanceof SVGElement && el.tagName !== 'svg')) return;
+    const wasMarked = el.hasAttribute(LF) || el.hasAttribute(TF);
+    if (reuse && wasMarked && markedSig.get(el) === sigOf(el)) return;
+    if (el.hasAttribute(LF)) el.removeAttribute(LF);
+    if (el.hasAttribute(TF)) el.removeAttribute(TF);
+    memo.delete(el);
+    const cs = getComputedStyle(el);
+    const kind = lightKind(el, cs);
+    if (kind) { el.setAttribute(LF, kind); markedSig.set(el, sigOf(el)); }
+    if (!hasOwnText(el)) return;
+    const fg = rgbOf(cs.color);
+    if (!fg || fg[3] < 0.3) return;
+    const bg = bgBehind(el, memo);
+    if (bg === 'unknown') return;
+    // On a dark (themed) background, text under 3:1 contrast is hard to read: use the theme text.
+    const bad = bg === 'dark' ? relLum(fg) < 0.12 : relLum(bg) < 0.2 && contrast(fg, bg) < 3;
+    if (bad) { el.setAttribute(TF, ''); markedSig.set(el, sigOf(el)); }
+  }
+  function checkTree(el, memo = new Map(), reuse = false) {
+    checkEl(el, memo, reuse);
+    for (const k of el.querySelectorAll('*')) checkEl(k, memo, reuse);
+  }
+  let fixThorough = false;
+  function fullScan() {
+    fixTimer = 0;
+    if (!fixActive() || !document.body || document.hidden) return; // hidden tab: caught up on return
+    if (document.body.getElementsByTagName('*').length > MAX_FULL_SCAN) return;
+    const reuse = !fixThorough;
+    fixThorough = false;
+    readAccent();
+    checkTree(document.body, new Map(), reuse);
+    if (fixObs) fixObs.takeRecords(); // drop records caused by our own marking
+  }
+  // The page-wide backstop costs ~50 ms on a big page, so it runs at most every 1.5 s and
+  // only when the browser is idle; the per-change checks above handle clicks instantly.
+  const queueFullScan = (thorough = false) => {
+    if (thorough) fixThorough = true;
+    if (fixTimer) return;
+    fixTimer = setTimeout(() => {
+      if (typeof requestIdleCallback === 'function') requestIdleCallback(fullScan, { timeout: 3000 });
+      else fullScan();
+    }, 1500);
+  };
+  const BIG_SUBTREE = 4000; // bigger changes are left to the idle scan instead of blocking
+  function onMutations(records) {
+    if (!fixActive()) return;
+    if (document.hidden) { queueFullScan(true); return; } // nobody's looking: no work now
+    const roots = new Set();
+    for (const m of records) {
+      if (m.type === 'attributes') roots.add(m.target);
+      else for (const n of m.addedNodes) if (n instanceof Element) roots.add(n);
+    }
+    const memo = new Map();
+    for (const el of roots) {
+      if (!el.isConnected) continue;
+      let covered = false;
+      for (let p = el.parentElement; p; p = p.parentElement) if (roots.has(p)) { covered = true; break; }
+      if (covered) continue;
+      if (el.getElementsByTagName('*').length > BIG_SUBTREE) { fixThorough = true; continue; }
+      checkTree(el, memo);
+    }
+    if (fixObs) fixObs.takeRecords();
+    queueFullScan(); // backstop for things restyled indirectly (siblings, late stylesheets)
+  }
+  const onPointer = (e) => {
+    if (!fixActive()) return;
+    const memo = new Map();
+    const path = e.composedPath().filter((n) => n instanceof Element && n !== document.body && n !== root).reverse();
+    for (const el of path) checkEl(el, memo); // outermost first, so text is judged on the fixed background
+    if (fixObs) fixObs.takeRecords();
+  };
+  function themeFix() {
+    if (!fixActive()) {
+      if (fixObs) {
+        fixObs.disconnect(); fixObs = null;
+        for (const ev of FIX_EVENTS) document.removeEventListener(ev, onPointer, true);
+      }
+      for (const el of document.querySelectorAll(`[${LF}],[${TF}]`)) { el.removeAttribute(LF); el.removeAttribute(TF); }
+      return;
+    }
+    if (!document.body) return;
+    if (!fixObs) {
+      fixObs = new MutationObserver(onMutations);
+      fixObs.observe(document.body, { subtree: true, childList: true, attributes: true,
+        attributeFilter: ['class', 'style', 'aria-selected', 'aria-current', 'aria-checked', 'aria-expanded', 'open'] });
+      for (const ev of FIX_EVENTS) document.addEventListener(ev, onPointer, true);
+    }
+    fullScan();
   }
 
   /* To-do panel width (set by dragging its left edge; remembered per browser). */
@@ -130,9 +296,12 @@
   document.addEventListener('visibilitychange', () => {
     if (document.hidden || !extAlive()) return;
     if (settings.dark.mode === 'schedule') applyStyles();
-    // Coming back to the tab (e.g. after submitting an assignment elsewhere):
-    // if the cached data is stale, rebuild so finished items drop off the list.
-    if (host && !dataFresh()) mountWidget();
+    // Coming back to the tab (e.g. after submitting an assignment elsewhere): if the data
+    // is over a minute old, refresh it in the background. The panel stays as it is and is
+    // only redrawn if something actually changed.
+    if (host && quietRefresh && !dataFresh()) quietRefresh();
+    // Catch up on theme fixes skipped while the tab was hidden.
+    if (fixObs) queueFullScan(true);
   });
 
   chrome.runtime.onMessage.addListener((msg) => {
@@ -141,18 +310,24 @@
 
   // Instant first paint (avoids a white flash): use the last settings cached
   // in localStorage, then reconcile with chrome.storage once it answers.
+  let booted = false;
   try {
     const boot = localStorage.getItem('mc-boot');
-    if (boot) settings = MC.sanitize(JSON.parse(boot));
+    if (boot) { settings = MC.sanitize(JSON.parse(boot)); booted = true; }
   } catch (_) { /* storage may be blocked; ignore */ }
   applyStyles();
   applySavedTodoWidth();
+  // With cached settings, build the panel as soon as the HTML is ready instead of
+  // waiting for chrome.storage; it's rebuilt below only if the real settings differ.
+  const widgetSig = () => JSON.stringify([settings.todo, settings.gpa]);
+  const bootSig = booted ? widgetSig() : null;
+  if (booted) mountWidget();
 
   chrome.storage.sync.get('settings').then(({ settings: s }) => {
     settings = MC.sanitize(s);
     cacheBoot();
     applyStyles();
-    whenDomReady(mountWidget);
+    if (widgetSig() !== bootSig) mountWidget();
   }).catch(() => { /* extension reloaded before storage answered: this old copy just stops */ });
 
   chrome.storage.onChanged.addListener((changes, area) => {
@@ -180,8 +355,12 @@
   /* 2. WIDGET LAYER                                                    */
   /* ------------------------------------------------------------------ */
 
-  const CACHE_KEY = 'mc-data-v3';
-  const CACHE_MS = 60 * 1000; // short, so submitted work disappears quickly
+  // The panel's data is cached in localStorage, so every Canvas tab (and the next visit)
+  // draws it instantly. Once it's over a minute old it is still shown, then refreshed
+  // quietly in the background and redrawn only if something changed.
+  const CACHE_KEY = 'mc-data-v4';
+  const CACHE_MS = 60 * 1000;                // older than this: show, then refresh quietly
+  const CACHE_MAX_MS = 12 * 60 * 60 * 1000;  // never show data older than this
   const DAY = 864e5;
   let host = null;
 
@@ -221,20 +400,35 @@
     return out;
   }
 
-  function dataFresh() {
+  function readCache() {
     try {
-      const c = JSON.parse(sessionStorage.getItem(CACHE_KEY));
-      return !!c && Date.now() - c.t < CACHE_MS;
-    } catch (_) { return false; }
+      const c = JSON.parse(localStorage.getItem(CACHE_KEY));
+      return c && c.d && Date.now() - c.t < CACHE_MAX_MS ? c : null;
+    } catch (_) { return null; }
+  }
+  function writeCache(t, d) { try { localStorage.setItem(CACHE_KEY, JSON.stringify({ t, d })); } catch (_) {} }
+  function clearCache() { try { localStorage.removeItem(CACHE_KEY); } catch (_) {} }
+  const dataFresh = () => { const c = readCache(); return !!c && Date.now() - c.t < CACHE_MS; };
+  const onDashboard = () => location.pathname === '/' || location.pathname === '/dashboard';
+
+  // Signing out (or reaching a login page) drops the cache, so whoever signs in next on
+  // this browser never sees the previous person's classes.
+  if (/^\/(login|logout)/.test(location.pathname)) clearCache();
+  document.addEventListener('submit', (e) => {
+    const f = e.target;
+    if (f && f.getAttribute && /\/logout\b/.test(f.getAttribute('action') || '')) clearCache();
+  }, true);
+  try { sessionStorage.removeItem('mc-data-v3'); } catch (_) {} // old per-tab cache
+
+  let inflight = null;
+  /** Fresh data from Canvas; concurrent callers share one set of requests. */
+  function fetchData() {
+    if (!inflight) inflight = fetchDataNow().finally(() => { inflight = null; });
+    return inflight;
   }
 
-  /** Fetch courses + planner items once, keep only the fields we need, cache 5 min. */
-  async function loadData() {
-    try {
-      const c = JSON.parse(sessionStorage.getItem(CACHE_KEY));
-      if (c && Date.now() - c.t < CACHE_MS) return c.d;
-    } catch (_) {}
-
+  /** Fetch courses + planner items, keep only the fields we need, and cache them. */
+  async function fetchDataNow() {
     const now = Date.now();
     const iso = (t) => new Date(t).toISOString();
     const [courses, items, colorRes, cards] = await Promise.all([
@@ -337,9 +531,12 @@
           };
         })
     };
-    try { sessionStorage.setItem(CACHE_KEY, JSON.stringify({ t: now, d: data })); } catch (_) {}
+    writeCache(now, data);
     return data;
   }
+
+  // Start the requests while Canvas itself is still loading, instead of after it settles.
+  if (onDashboard() && (settings.todo.enabled || settings.gpa.enabled) && !dataFresh()) fetchData().catch(() => {});
 
   /* ---------- GPA math ---------- */
 
@@ -485,12 +682,10 @@
     item.oid = (await r.json()).id;
   }
 
-  /** Keep the 1-minute cache in step with local changes (without extending its life). */
+  /** Keep the cache in step with local changes (without extending its life). */
   function patchCache(items) {
-    try {
-      const c = JSON.parse(sessionStorage.getItem(CACHE_KEY));
-      if (c) { c.d.items = items; sessionStorage.setItem(CACHE_KEY, JSON.stringify(c)); }
-    } catch (_) {}
+    const c = readCache();
+    if (c) { c.d.items = items; writeCache(c.t, c.d); }
   }
 
   /* ---------- Per-class colours ---------- */
@@ -884,6 +1079,7 @@
 
   function unmount() {
     gen++;
+    quietRefresh = null;
     if (host) { host.remove(); host = null; }
     root.removeAttribute('data-mc-todo-collapsed');
     closeCalc();
@@ -894,11 +1090,16 @@
     document.querySelectorAll('[data-mc-badged]').forEach((c) => c.removeAttribute('data-mc-badged'));
   }
 
-  /** Schedule a (re)build for when the browser is idle so page load is never delayed. */
+  let quietRefresh = null; // set by the current mount: fetch fresh data, redraw if changed
+
+  /** (Re)build the panel as soon as the page's HTML is ready. Building it is cheap; the
+   *  data comes from the cache or from requests already started at load. */
   function mountWidget() {
     if (!extAlive()) return;
-    if (window.requestIdleCallback) requestIdleCallback(renderWidget, { timeout: 2000 });
-    else setTimeout(renderWidget, 200);
+    // Never synchronously: this can be called during startup, before the rest of this
+    // script (state it uses further down) has run.
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', renderWidget, { once: true });
+    else setTimeout(renderWidget, 0);
   }
 
   async function renderWidget() {
@@ -926,9 +1127,12 @@
       side.before(me);
     }
 
-    try {
-      const data = await loadData();
-      if (mine !== gen) return; // superseded by a newer mount
+    let drawn = ''; // JSON of the data currently shown, so unchanged refreshes do nothing
+    const draw = (data) => {
+      const sig = JSON.stringify(data);
+      if (sig === drawn) return;
+      const redraw = !!drawn;
+      drawn = sig;
       courseMap = new Map(data.courses.map((c) => [String(c.id), c]));
       dataReady = true;
       if (body) {
@@ -937,12 +1141,30 @@
         const colorOf = assignCourseColors(
           [...data.items, ...staff.map((c) => ({ cid: c.id, course: c.name }))], data.colors);
         const todoCard = buildTodo(data.items, gpa, colorOf, (c) => { body.classList.toggle('is-collapsed', c); if (host) host.classList.toggle('mc-collapsed', c); });
+        hideTip();
         body.replaceChildren(todoCard, buildGrading(grading, staff, colorOf) || '');
-        if (!wantGrades) closeCalc();
       }
-      if (wantGrades) { decorateCards(); watchCards(); }
-    } catch (_) {
-      if (mine === gen && body) body.replaceChildren(h('p', { class: 'muted' }, "My Canvas couldn't load your data. Try refreshing."));
-    }
+      if (wantGrades) {
+        if (redraw) { // grades may have changed: rebuild the card badges
+          closeCalc();
+          document.querySelectorAll('.mc-grade').forEach((b) => b.remove());
+          document.querySelectorAll('[data-mc-badged]').forEach((c) => c.removeAttribute('data-mc-badged'));
+        }
+        decorateCards(); watchCards();
+      } else closeCalc();
+    };
+    const refresh = async () => {
+      try {
+        const data = await fetchData();
+        if (mine === gen) draw(data); // skip if superseded by a newer mount
+      } catch (_) {
+        if (mine === gen && body && !drawn) body.replaceChildren(h('p', { class: 'muted' }, "My Canvas couldn't load your data. Try refreshing."));
+      }
+    };
+    quietRefresh = refresh;
+
+    const cached = readCache();
+    if (cached) { try { draw(cached.d); } catch (_) { drawn = ''; } }
+    if (!cached || Date.now() - cached.t >= CACHE_MS) await refresh();
   }
 })();

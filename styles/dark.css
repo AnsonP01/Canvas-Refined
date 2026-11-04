@@ -1,5 +1,5 @@
 /* Dark mode: active when <html data-mc-dark>. Colors come from --mc-* vars in themes/*.css. */
-html[data-mc-dark] { color-scheme: dark; }
+html[data-mc-dark] { color-scheme: dark; background-color: var(--mc-bg); }
 
 html[data-mc-dark] body,
 html[data-mc-dark] #application,
@@ -366,4 +366,21 @@ html[data-mc-dark] #content [class*="-svgIcon"] { color: var(--mc-muted); fill: 
 html[data-mc-dark] {
   --mc-w-bg: var(--mc-surface); --mc-w-text: var(--mc-text); --mc-w-muted: var(--mc-muted);
   --mc-w-border: var(--mc-border); --mc-w-accent: var(--mc-accent);
+}
+
+/* Theme fixer (content.js): light boxes and unreadable text found on the page.
+   :not(#mc-x) adds id-level weight so these win over page and theme rules. */
+html[data-mc-dark] [data-mc-lightfix="n"]:not(#mc-x):not(#mc-y) {
+  background-color: var(--mc-surface) !important;
+  color: var(--mc-text) !important;
+}
+html[data-mc-dark] [data-mc-lightfix="t"]:not(#mc-x):not(#mc-y) {
+  background-color: color-mix(in srgb, var(--mc-accent) 22%, var(--mc-surface)) !important;
+  color: var(--mc-text) !important;
+}
+html[data-mc-dark] [data-mc-textfix]:not(#mc-x):not(#mc-y) {
+  color: var(--mc-text) !important;
+}
+html[data-mc-dark] [data-mc-lightfix] :not([class*="-color-brand"]):not([class*="-color-secondary"]):not([class*="-text-color-secondary"]):not([class*="checkboxFacade"] *):not(#mc-x) {
+  color: var(--mc-text) !important;
 }
