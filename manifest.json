@@ -1,0 +1,38 @@
+{
+  "manifest_version": 3,
+  "name": "My Canvas",
+  "version": "1.0.0",
+  "minimum_chrome_version": "111",
+  "description": "Dark mode, dashboard customization, a better to-do list and a GPA calculator for Canvas LMS.",
+  "permissions": ["storage", "alarms"],
+  "host_permissions": ["*://*.instructure.com/*"],
+  "background": { "service_worker": "background.js" },
+  "action": {
+    "default_title": "My Canvas",
+    "default_popup": "popup.html",
+    "default_icon": { "16": "icons/icon16.png", "48": "icons/icon48.png" }
+  },
+  "icons": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" },
+  "content_scripts": [
+    {
+      "matches": ["*://*.instructure.com/*"],
+      "js": ["shared.js", "content.js"],
+      "css": [
+        "styles/fonts.css",
+        "styles/dark.css",
+        "styles/themes/graphite.css",
+        "styles/themes/obsidian.css",
+        "styles/themes/sunset-rose.css",
+        "styles/themes/night.css",
+        "styles/dashboard.css"
+      ],
+      "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["styles/widgets.css", "fonts/*"],
+      "matches": ["*://*.instructure.com/*"]
+    }
+  ]
+}

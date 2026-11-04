@@ -1,0 +1,51 @@
+:root {
+  --bg: #fff; --card: #f5f6f8; --tx: #1f2933; --mu: #6b7780; --bd: #dde1e5;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #1b1d21; --card: #26292f; --tx: #e6e8eb; --mu: #9aa1ab; --bd: #3a3f47; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; width: 360px; padding: 12px; background: var(--bg); color: var(--tx);
+  font: 13px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif; }
+header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 10px; }
+h1 { font-size: 18px; margin: 0; }
+h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--mu); margin: 0 0 8px; }
+.hint { color: var(--mu); font-size: 11px; margin: 0; }
+section { background: var(--card); border: 1px solid var(--bd); border-radius: 10px; padding: 12px; margin-bottom: 10px; }
+.sw, .field { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 5px 0; min-height: 30px; }
+.field.col { flex-direction: column; align-items: stretch; }
+[hidden] { display: none !important; }
+.pair { display: inline-flex; align-items: center; gap: 6px; }
+select, input[type="time"] { background: var(--bg); color: var(--tx); border: 1px solid var(--bd); border-radius: 6px; padding: 4px 6px; font: inherit; }
+input[type="color"] { width: 36px; height: 26px; padding: 0; border: 1px solid var(--bd); border-radius: 6px; background: none; cursor: pointer; }
+
+/* toggle switch (pure CSS) */
+input[type="checkbox"] { appearance: none; width: 34px; height: 20px; border-radius: 10px; background: var(--bd);
+  position: relative; cursor: pointer; transition: background .15s; flex: none; margin: 0; }
+input[type="checkbox"]::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px;
+  border-radius: 50%; background: #fff; transition: transform .15s; }
+input[type="checkbox"]:checked { background: var(--ac, #6c8cff); }
+input[type="checkbox"]:checked::after { transform: translateX(14px); }
+input:focus-visible, select:focus-visible, button:focus-visible { outline: 2px solid var(--ac, #6c8cff); outline-offset: 2px; }
+
+/* theme tiles */
+.themes { display: flex; gap: 8px; }
+.tile { flex: 1; border: 2px solid var(--bd); border-radius: 8px; padding: 0; background: none; cursor: pointer; overflow: hidden; color: var(--tx); font: inherit; }
+.tile[aria-pressed="true"] { border-color: var(--ac, #6c8cff); }
+.tile .mock { height: 42px; padding: 6px; display: flex; flex-direction: column; gap: 4px; }
+.tile .mock i { display: block; height: 8px; border-radius: 3px; }
+.tile .mock i:last-child { width: 40%; background: var(--ac, #6c8cff); }
+.tile span { display: block; font-size: 11px; padding: 3px 0; background: var(--card); }
+
+/* live preview */
+#preview { display: flex; gap: 8px; padding: 10px; border-radius: 10px; margin-bottom: 10px; border: 1px solid var(--bd); }
+.pv-card { flex: 1; border-radius: 8px; overflow: hidden; border: 1px solid rgba(128,128,128,.3); }
+.pv-hero { height: 34px; }
+.pv-body { padding: 6px 8px; display: flex; flex-direction: column; font-size: 12px; }
+.pv-body span { font-size: 11px; opacity: .7; }
+
+.btns { display: flex; gap: 8px; }
+button { flex: 1; padding: 7px; border-radius: 6px; border: 1px solid var(--bd); background: var(--bg); color: var(--tx); cursor: pointer; font: inherit; }
+button:hover { border-color: var(--ac, #6c8cff); }
+button.ghost { flex: 0 0 auto; color: var(--mu); }

@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>My Canvas</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <h1>My Canvas</h1>
+    <span class="hint">Changes save automatically</span>
+  </header>
+
+  <!-- Live preview of theme + accent + gradient + font -->
+  <div id="preview" aria-hidden="true">
+    <div class="pv-card"><div class="pv-hero"></div><div class="pv-body"><b>Biology 101</b><span>Due tomorrow</span></div></div>
+    <div class="pv-card"><div class="pv-hero"></div><div class="pv-body"><b>Calculus II</b><span>94.2%</span></div></div>
+  </div>
+
+  <section>
+    <h2>Dark mode</h2>
+    <label class="sw"><span>Enable dark mode</span><input type="checkbox" data-key="dark.enabled"></label>
+    <label class="field"><span>When</span>
+      <select data-key="dark.mode">
+        <option value="always">Always on</option>
+        <option value="system">Follow system</option>
+        <option value="schedule">Schedule</option>
+      </select>
+    </label>
+    <div class="field" id="schedule" hidden>
+      <span>Dark from</span>
+      <span class="pair"><input type="time" data-key="dark.start"> to <input type="time" data-key="dark.end"></span>
+    </div>
+    <div class="field col"><span>Theme</span><div id="themes" class="themes"></div></div>
+    <label class="sw"><span>Night warm tint (less blue light)</span><input type="checkbox" data-key="dark.warm"></label>
+    <label class="field"><span>Tint strength</span><input type="range" min="5" max="60" step="5" data-key="dark.warmLevel"></label>
+    <label class="field"><span>Accent color</span><input type="color" data-key="accent"></label>
+  </section>
+
+  <section>
+    <h2>Dashboard</h2>
+    <label class="sw"><span>Match card colors to theme (dark mode)</span><input type="checkbox" data-key="dashboard.themeCards"></label>
+    <label class="sw"><span>Gradient card backgrounds</span><input type="checkbox" data-key="dashboard.gradient"></label>
+    <div class="field" id="gradients">
+      <span>Gradient colors</span>
+      <span class="pair"><input type="color" data-key="dashboard.gradA"><input type="color" data-key="dashboard.gradB"></span>
+    </div>
+    <label class="sw"><span>Condensed cards</span><input type="checkbox" data-key="dashboard.condensed"></label>
+    <label class="field"><span>Font</span>
+      <select data-key="dashboard.font" id="font"></select>
+    </label>
+    <label class="sw"><span>Remove institution logo</span><input type="checkbox" data-key="dashboard.hideLogo"></label>
+    <label class="sw"><span>Hide “Recent Feedback”</span><input type="checkbox" data-key="dashboard.hideFeedback"></label>
+  </section>
+
+  <section>
+    <h2>Productivity</h2>
+    <label class="sw"><span>Better to-do list</span><input type="checkbox" data-key="todo.enabled"></label>
+    <label class="sw"><span>Grades on class cards (+ small GPA)</span><input type="checkbox" data-key="gpa.enabled"></label>
+    <label class="field"><span>GPA scale</span>
+      <select data-key="gpa.scale">
+        <option value="4.0">4.0 (college)</option>
+        <option value="5.0">5.0 weighted (high school)</option>
+      </select>
+    </label>
+    <label class="sw"><span>Click grade for “What do I need?”</span><input type="checkbox" data-key="gpa.calculator"></label>
+  </section>
+
+  <section>
+    <h2>Backup</h2>
+    <div class="btns">
+      <button id="export">Export JSON</button>
+      <button id="import">Import JSON</button>
+      <button id="reset" class="ghost">Reset</button>
+    </div>
+    <input type="file" id="file" accept="application/json,.json" hidden>
+    <p id="msg" class="hint" role="status"></p>
+  </section>
+
+  <script src="shared.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
