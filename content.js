@@ -12,6 +12,11 @@
   'use strict';
 
   const root = document.documentElement;
+
+  /** False once the extension has been reloaded, updated or removed while this tab stayed open.
+   *  This old copy of the script keeps running, and any chrome.* call from it throws
+   *  "Extension context invalidated". Check this first and quietly do nothing instead. */
+  const extAlive = () => { try { return !!(chrome.runtime && chrome.runtime.id); } catch (_) { return false; } };
   const mq = matchMedia('(prefers-color-scheme: dark)');
   let settings = MC.sanitize(null);
 
@@ -123,7 +128,7 @@
 
   // Re-check the schedule when the tab becomes visible (covers sleep/wake).
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) return;
+    if (document.hidden || !extAlive()) return;
     if (settings.dark.mode === 'schedule') applyStyles();
     // Coming back to the tab (e.g. after submitting an assignment elsewhere):
     // if the cached data is stale, rebuild so finished items drop off the list.
@@ -434,6 +439,7 @@
   }
 
   function showTip(item, li) {
+    if (!extAlive()) return;
     clearTimeout(tipTimer);
     tipTimer = setTimeout(async () => {
       if (!tipHost) {
@@ -838,6 +844,7 @@
 
   /** Small popover with the "what grade do I need?" calculator. */
   function openCalc(anchor, course) {
+    if (!extAlive()) return;
     closeCalc();
     const r = anchor.getBoundingClientRect();
     popHost = document.createElement('div');
@@ -887,11 +894,13 @@
 
   /** Schedule a (re)build for when the browser is idle so page load is never delayed. */
   function mountWidget() {
+    if (!extAlive()) return;
     if (window.requestIdleCallback) requestIdleCallback(renderWidget, { timeout: 2000 });
     else setTimeout(renderWidget, 200);
   }
 
   async function renderWidget() {
+    if (!extAlive()) return;
     unmount();
     const mine = gen;
     const wantTodo = settings.todo.enabled, wantGrades = settings.gpa.enabled;
