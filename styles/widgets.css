@@ -85,3 +85,32 @@ button.link[hidden] { display: none; }
 /* Per-class colour dot before the course name */
 .meta .course { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; }
 .meta .dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--course, var(--accent)); transform: translateY(-1px); }
+
+/* Needs grading (TA/LA/teacher) */
+.mc.is-collapsed .grading { display: none; }
+.grading .group { margin-top: 10px; }
+.grading summary {
+  display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none;
+  padding: 6px 2px; font-weight: 650;
+}
+.grading summary::-webkit-details-marker { display: none; }
+.grading summary::after { content: '▾'; color: var(--muted); margin-left: 4px; transition: transform .15s; }
+.grading details:not([open]) summary::after { transform: rotate(-90deg); }
+.grading .gname { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.grading .count {
+  font-size: 12px; font-weight: 650; padding: 1px 8px; border-radius: 999px;
+  color: var(--course, var(--accent)); border: 1px solid var(--course, var(--accent));
+}
+.grading summary .dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--course, var(--accent)); }
+.grading ul.todo { margin-top: 6px; }
+.badge {
+  flex: none; min-width: 26px; height: 26px; padding: 0 6px; border-radius: 999px;
+  display: grid; place-items: center; font-size: 12px; font-weight: 700; color: #fff;
+  background: var(--course, var(--accent));
+}
+
+.grading .role {
+  font-size: 11px; font-weight: 650; padding: 1px 7px; border-radius: 6px;
+  color: var(--muted); border: 1px solid var(--border); white-space: nowrap;
+}
+.grading .caught-up { margin: 4px 0 0 18px; }

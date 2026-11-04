@@ -115,7 +115,7 @@
   /* 2. WIDGET LAYER                                                    */
   /* ------------------------------------------------------------------ */
 
-  const CACHE_KEY = 'mc-data-v1';
+  const CACHE_KEY = 'mc-data-v3';
   const CACHE_MS = 60 * 1000; // short, so submitted work disappears quickly
   const DAY = 864e5;
   let host = null;
@@ -172,12 +172,46 @@
 
     const now = Date.now();
     const iso = (t) => new Date(t).toISOString();
-    const [courses, items, colorRes] = await Promise.all([
+    const [courses, items, colorRes, cards] = await Promise.all([
       api('/api/v1/courses?enrollment_state=active&include[]=total_scores&per_page=100'),
       api(`/api/v1/planner/items?start_date=${iso(now - 14 * DAY)}&end_date=${iso(now + 45 * DAY)}&per_page=100`),
       // The user's course colours (same ones Canvas uses on dashboard cards). Optional: never fail the load.
-      api('/api/v1/users/self/colors', 1).catch(() => [])
+      api('/api/v1/users/self/colors', 1).catch(() => []),
+      // The cards actually shown on the dashboard (favourited courses, or Canvas's default set).
+      api('/api/v1/dashboard/dashboard_cards', 1).catch(() => null)
     ]);
+
+    // Which classes are on the dashboard (not hidden). Fall back to favourites; if neither
+    // answers, don't filter at all rather than showing nothing.
+    let shown = null;
+    if (Array.isArray(cards) && cards.length) shown = new Set(cards.map((c) => String(c.id)));
+    else {
+      const fav = await api('/api/v1/users/self/favorites/courses?per_page=100', 2).catch(() => null);
+      if (Array.isArray(fav) && fav.length) shown = new Set(fav.map((c) => String(c.id)));
+    }
+    const onDash = (cid) => !shown || shown.has(String(cid));
+
+    // Your role in each class comes from your own enrollments on the course object:
+    // type is the base role ("student", "ta", "teacher", ...); role is the role name,
+    // which is a custom name (e.g. "Learning Assistant") when the school defines one.
+    const STAFF = { ta: 'TA', teacher: 'Instructor' };
+    const roleLabel = (e) => (e.role && !/Enrollment$/.test(e.role) ? e.role : STAFF[e.type]);
+    const studentIds = new Set(), staffIds = new Set();
+    const staff = [];
+    for (const c of courses) {
+      const ens = c.enrollments || [];
+      if (ens.some((e) => e.type === 'student')) studentIds.add(String(c.id));
+      const e = ens.find((x) => STAFF[x.type]);
+      if (!e) continue;
+      staffIds.add(String(c.id));
+      if (onDash(c.id)) staff.push({ id: c.id, name: c.name || c.course_code || 'Course', role: roleLabel(e) });
+    }
+
+    // "Needs grading" comes only from the classes you teach/assist that are on the dashboard.
+    const todoLists = await Promise.all(staff.map((c) =>
+      api(`/api/v1/courses/${encodeURIComponent(c.id)}/todo?per_page=100`, 3)
+        .then((list) => list.map((t) => ({ t, c })))
+        .catch(() => [])));
 
     // { "course_123": "#hex" } -> { "123": "#hex" }, keeping only well-formed hex colours.
     const colors = {};
@@ -188,8 +222,22 @@
     }
 
     const TYPES = new Set(['assignment', 'quiz', 'discussion_topic']);
+    const grading = todoLists.flat()
+      .filter(({ t }) => t && t.type === 'grading' && t.needs_grading_count > 0 && t.assignment)
+      .map(({ t, c }) => ({
+        title: t.assignment.name || 'Untitled',
+        course: c.name,
+        cid: c.id,
+        count: t.needs_grading_count,
+        due: t.assignment.due_at || null,
+        pts: typeof t.assignment.points_possible === 'number' ? t.assignment.points_possible : null,
+        url: t.html_url
+      }));
+
     const data = {
       colors,
+      grading,
+      staff,
       courses: courses
         .map((c) => {
           const e = (c.enrollments || []).find((x) => x.type === 'student');
@@ -199,7 +247,14 @@
         })
         .filter(Boolean),
       items: items
-        .filter((it) => TYPES.has(it.plannable_type) && !(it.planner_override && it.planner_override.dismissed))
+        .filter((it) => {
+          if (!TYPES.has(it.plannable_type) || (it.planner_override && it.planner_override.dismissed)) return false;
+          const cid = it.course_id || (it.plannable && it.plannable.course_id);
+          if (cid == null) return true; // not tied to a class
+          const id = String(cid);
+          // Only classes on the dashboard, and not ones you only teach/assist (nothing to submit there).
+          return onDash(id) && !(staffIds.has(id) && !studentIds.has(id));
+        })
         .map((it) => {
           const s = it.submissions || {};
           const o = it.planner_override || {};
@@ -414,8 +469,7 @@
     return out;
   }
 
-  function buildTodo(items, gpa, colors) {
-    const colorOf = assignCourseColors(items, colors);
+  function buildTodo(items, gpa, colorOf, onCollapse) {
     const LIMIT = 6;
     let expanded = false;
     const card = h('section', { class: 'card' });
@@ -511,6 +565,7 @@
       const more = h('button', { class: 'link', hidden: rest.length <= LIMIT, onclick: () => { expanded = !expanded; paint(); } },
         expanded ? 'Show less' : `Show ${rest.length - LIMIT} more`);
 
+      if (onCollapse) onCollapse(collapsed);
       if (collapsed) {
         card.classList.add('collapsed');
         card.replaceChildren(
@@ -544,6 +599,64 @@
 
     paint();
     return card;
+  }
+
+  /** "Needs grading" card: one section per class you are a TA/LA/instructor for (and that is
+   *  on the dashboard), listing assignments with ungraded submissions. Returns null when you
+   *  have no such classes. */
+  function buildGrading(list, staff, colorOf) {
+    if (!staff.length) return null;
+    const PER_GROUP = 5;
+    const byDue = (a, b) => (a.due ? new Date(a.due) : Infinity) - (b.due ? new Date(b.due) : Infinity);
+    const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+    const groups = staff
+      .map((c) => {
+        const key = String(c.id);
+        const items = list.filter((it) => String(it.cid) === key).sort(byDue);
+        return { key, name: c.name, role: c.role, items, total: items.reduce((n, it) => n + it.count, 0) };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+    const total = groups.reduce((n, g) => n + g.total, 0);
+
+    const group = (g) => {
+      let showAll = false;
+      const color = colorOf.get(g.key);
+      const ul = h('ul', { class: 'todo' });
+      const more = h('button', { class: 'link', type: 'button' });
+      const paint = () => {
+        ul.replaceChildren(...g.items.slice(0, showAll ? undefined : PER_GROUP).map((it) =>
+          h('li', { style: `--course: ${color}` },
+            h('span', { class: 'badge', title: plural(it.count, 'submission needs grading', 'submissions need grading') }, String(it.count)),
+            h('div', { class: 'body' },
+              h('a', { href: safeHref(it.url), target: '_blank', rel: 'noopener' }, it.title),
+              h('div', { class: 'meta' },
+                h('span', null, it.pts != null ? `${it.pts} pts` : ''),
+                h('b', null, it.due ? 'Due ' + dueLabel(it.due) : 'No due date'))))));
+        more.hidden = g.items.length <= PER_GROUP;
+        more.textContent = more.hidden ? '' : showAll ? 'Show less' : `Show ${g.items.length - PER_GROUP} more`;
+      };
+      more.addEventListener('click', () => { showAll = !showAll; paint(); });
+      paint();
+      return h('details', { class: 'group', open: true, style: `--course: ${color}` },
+        h('summary', null,
+          h('i', { class: 'dot', 'aria-hidden': 'true' }),
+          h('span', { class: 'gname' }, g.name),
+          g.role && h('span', { class: 'role', title: `Your role: ${g.role}` }, g.role),
+          h('span', { class: 'count', title: plural(g.total, 'submission', 'submissions') + ' to grade' }, String(g.total))),
+        g.items.length ? ul : h('p', { class: 'muted small caught-up' }, 'All caught up, nothing to grade.'),
+        more);
+    };
+
+    const assignments = groups.reduce((n, g) => n + g.items.length, 0);
+    return h('section', { class: 'card grading' },
+      h('div', { class: 'row' },
+        h('div', { class: 'head' },
+          h('h3', null, 'Needs grading', h('span', { class: 'chip' }, String(total))),
+          h('p', { class: 'muted' },
+            total
+              ? `${plural(total, 'submission', 'submissions')} · ${plural(assignments, 'assignment', 'assignments')}`
+              : 'All caught up'))),
+      ...groups.map(group));
   }
 
   /** "What grade do I need?" form for one course. Fetches its assignments lazily. */
@@ -714,7 +827,11 @@
       dataReady = true;
       if (body) {
         const gpa = wantGrades ? computeGpa(data.courses, settings.gpa.scale) : null;
-        body.replaceChildren(buildTodo(data.items, gpa, data.colors));
+        const grading = data.grading || [], staff = data.staff || [];
+        const colorOf = assignCourseColors(
+          [...data.items, ...staff.map((c) => ({ cid: c.id, course: c.name }))], data.colors);
+        const todoCard = buildTodo(data.items, gpa, colorOf, (c) => body.classList.toggle('is-collapsed', c));
+        body.replaceChildren(todoCard, buildGrading(grading, staff, colorOf) || '');
         if (!wantGrades) closeCalc();
       }
       if (wantGrades) { decorateCards(); watchCards(); }
