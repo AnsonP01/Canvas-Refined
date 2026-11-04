@@ -34,3 +34,9 @@ html[data-mc-todo] #right-side #planner-todosidebar-item { display: none !import
   color: #fff; font: 600 12px/1.4 system-ui, sans-serif; cursor: pointer;
   box-shadow: 0 1px 4px rgba(0,0,0,.35);
 }
+
+/* Wider right sidebar when our to-do panel is on */
+html[data-mc-todo] #right-side-wrapper { width: 440px !important; max-width: 40vw; }
+html[data-mc-todo] #right-side-wrapper #right-side,
+html[data-mc-todo] #right-side-wrapper #mc-widget-host { width: 100% !important; box-sizing: border-box; }
+html[data-mc-todo] #not_right_side { min-width: 0; }

@@ -1,10 +1,10 @@
 /* Rendered inside a Shadow DOM (to-do panel + popovers). Self-contained. */
+/* Colours come from the page (dark.css sets --mc-w-* only while the extension's dark mode is on),
+   so the panel follows the extension's light/dark state and theme, not the OS setting. */
 .mc {
-  --bg: #fff; --text: #1f2328; --muted: #6a737d; --border: #d8dce1; --accent: #3a7bd5; --danger: #d9534f;
+  --bg: var(--mc-w-bg, #fff); --text: var(--mc-w-text, #1f2328); --muted: var(--mc-w-muted, #6a737d);
+  --border: var(--mc-w-border, #d8dce1); --accent: var(--mc-w-accent, #3a7bd5); --danger: #d9534f;
   font: 14px/1.45 system-ui, -apple-system, 'Segoe UI', sans-serif; color: var(--text);
-}
-@media (prefers-color-scheme: dark) {
-  .mc { --bg: #26292f; --text: #e6e8eb; --muted: #9aa1ab; --border: #3a3e46; --accent: #6c8cff; }
 }
 .mc *, .mc *::before, .mc *::after { box-sizing: border-box; }
 .card, .pop {

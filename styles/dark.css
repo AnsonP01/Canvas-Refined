@@ -294,3 +294,76 @@ html[data-mc-dark][data-mc-dark] #right-side .button-sidebar-wide * {
   background-color: transparent !important;
   color: inherit !important;
 }
+
+/* ---- New Inbox (InstUI/React) ---- */
+html[data-mc-dark] #content [class*="-view--"],
+html[data-mc-dark] #content [class*="-flexItem"],
+html[data-mc-dark] #content [class*="-view__"],
+html[data-mc-dark] #content [data-cid~="View"],
+html[data-mc-dark] #content [data-cid~="Flex"],
+html[data-mc-dark] #content [data-cid~="FlexItem"],
+html[data-mc-dark] #content [data-cid~="Heading"],
+html[data-mc-dark] #content [data-cid~="Text"],
+html[data-mc-dark] #content [data-cid~="List"],
+html[data-mc-dark] #content [data-cid~="ListItem"] {
+  background-color: transparent !important;
+  border-color: var(--mc-border) !important;
+}
+html[data-mc-dark] #content [data-cid~="Text"],
+html[data-mc-dark] #content [data-cid~="Heading"],
+html[data-mc-dark] #content [data-cid~="ListItem"] { color: var(--mc-text) !important; }
+html[data-mc-dark] #content [data-cid~="Text"][class*="-color-secondary"],
+html[data-mc-dark] #content [class*="-text-color-secondary"] { color: var(--mc-muted) !important; }
+
+/* Toolbar row above the message list */
+html[data-mc-dark] #content [class*="-view--"]:has(> [data-cid~="Select"]),
+html[data-mc-dark] #content [class*="-view--"]:has(> [data-cid~="TextInput"]),
+html[data-mc-dark] #content [class*="-view--"]:has(> [data-cid~="SimpleSelect"]) {
+  background-color: var(--mc-surface) !important;
+}
+
+/* Buttons */
+html[data-mc-dark] #content [data-cid~="BaseButton"],
+html[data-mc-dark] #content [data-cid~="IconButton"],
+html[data-mc-dark] #content [data-cid~="CondensedButton"] {
+  background-color: var(--mc-surface-2) !important;
+  color: var(--mc-text) !important;
+  border-color: var(--mc-border) !important;
+}
+html[data-mc-dark] #content [data-cid~="BaseButton"][class*="primary"] {
+  background-color: var(--mc-accent) !important;
+  color: #fff !important;
+}
+html[data-mc-dark] #content [data-cid~="BaseButton"] * { color: inherit !important; background-color: transparent !important; }
+
+/* Inputs, selects, search */
+html[data-mc-dark] #content input,
+html[data-mc-dark] #content [data-cid~="TextInput"],
+html[data-mc-dark] #content [class*="-textInput__facade"],
+html[data-mc-dark] #content [class*="-select__facade"],
+html[data-mc-dark] #content [class*="-textInput__layout"] {
+  background-color: var(--mc-surface-2) !important;
+  color: var(--mc-text) !important;
+  border-color: var(--mc-border) !important;
+}
+
+/* Checkboxes, dates, unread dot */
+html[data-mc-dark] #content [class*="-checkboxFacade__facade"],
+html[data-mc-dark] #content [class*="checkbox"] [class*="facade"] {
+  background-color: var(--mc-surface-2) !important;
+  border-color: var(--mc-muted) !important;
+}
+html[data-mc-dark] #content [class*="-checkboxFacade__facade"] * { color: var(--mc-accent) !important; }
+html[data-mc-dark] #content [data-cid~="Text"][class*="-color-brand"],
+html[data-mc-dark] #content [class*="-color-brand"] { color: var(--mc-accent) !important; }
+
+/* Inbox page header and empty state */
+html[data-mc-dark] #content [data-cid~="Heading"] { color: var(--mc-text) !important; }
+html[data-mc-dark] #content svg[name="IconMail"],
+html[data-mc-dark] #content [class*="-svgIcon"] { color: var(--mc-muted); fill: currentColor; }
+
+/* To-do panel (Shadow DOM) inherits these custom properties */
+html[data-mc-dark] {
+  --mc-w-bg: var(--mc-surface); --mc-w-text: var(--mc-text); --mc-w-muted: var(--mc-muted);
+  --mc-w-border: var(--mc-border); --mc-w-accent: var(--mc-accent);
+}
