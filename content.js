@@ -172,13 +172,24 @@
 
     const now = Date.now();
     const iso = (t) => new Date(t).toISOString();
-    const [courses, items] = await Promise.all([
+    const [courses, items, colorRes] = await Promise.all([
       api('/api/v1/courses?enrollment_state=active&include[]=total_scores&per_page=100'),
-      api(`/api/v1/planner/items?start_date=${iso(now - 14 * DAY)}&end_date=${iso(now + 45 * DAY)}&per_page=100`)
+      api(`/api/v1/planner/items?start_date=${iso(now - 14 * DAY)}&end_date=${iso(now + 45 * DAY)}&per_page=100`),
+      // The user's course colours (same ones Canvas uses on dashboard cards). Optional: never fail the load.
+      api('/api/v1/users/self/colors', 1).catch(() => [])
     ]);
+
+    // { "course_123": "#hex" } -> { "123": "#hex" }, keeping only well-formed hex colours.
+    const colors = {};
+    const raw = (colorRes[0] && colorRes[0].custom_colors) || {};
+    for (const [k, v] of Object.entries(raw)) {
+      const m = /^course_(\d+)$/.exec(k);
+      if (m && /^#[0-9a-f]{3,8}$/i.test(v)) colors[m[1]] = v;
+    }
 
     const TYPES = new Set(['assignment', 'quiz', 'discussion_topic']);
     const data = {
+      colors,
       courses: courses
         .map((c) => {
           const e = (c.enrollments || []).find((x) => x.type === 'student');
@@ -350,7 +361,61 @@
     } catch (_) {}
   }
 
-  function buildTodo(items, gpa) {
+  /* ---------- Per-class colours ---------- */
+
+  // Well-separated hues used when a class has no Canvas colour, or its Canvas colour is
+  // too close to one another class already uses.
+  const PALETTE = ['#e0457b', '#3a7bd5', '#2e9b57', '#d9992b', '#8e5cd9', '#1fa3a3',
+                   '#e5632e', '#6a8f2a', '#0ea5e9', '#a21caf', '#b45309', '#64748b'];
+  const MIN_DIST = 90; // "redmean" RGB distance below which two colours look alike
+
+  const courseKey = (i) => String(i.cid != null ? i.cid : i.course || '');
+
+  function hexToRgb(hex) {
+    let h = hex.replace('#', '');
+    if (h.length === 3 || h.length === 4) h = h.slice(0, 3).split('').map((c) => c + c).join('');
+    const n = parseInt(h.slice(0, 6), 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+  function colorDist(a, b) {
+    const [r1, g1, b1] = hexToRgb(a), [r2, g2, b2] = hexToRgb(b);
+    const rm = (r1 + r2) / 2, dr = r1 - r2, dg = g1 - g2, db = b1 - b2;
+    return Math.sqrt((2 + rm / 256) * dr * dr + 4 * dg * dg + (2 + (255 - rm) / 256) * db * db);
+  }
+  function hslToHex(h, s, l) {
+    const k = (n) => (n + h / 30) % 12, a = s * Math.min(l, 1 - l);
+    const f = (n) => Math.round(255 * (l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1))));
+    return '#' + [f(0), f(8), f(4)].map((v) => v.toString(16).padStart(2, '0')).join('');
+  }
+
+  /** Give every class in the list its own colour: its Canvas colour when that is distinct
+   *  from the classes before it, otherwise the next distinct palette/generated colour.
+   *  Classes are processed in name order so the result is stable between reloads. */
+  function assignCourseColors(items, colors) {
+    const byKey = new Map();
+    for (const i of items) if (!byKey.has(courseKey(i))) byKey.set(courseKey(i), i);
+    const courses = [...byKey.entries()].sort((x, y) => (x[1].course || '').localeCompare(y[1].course || ''));
+
+    const used = [];
+    const distinct = (c) => used.every((u) => colorDist(u, c) >= MIN_DIST);
+    const out = new Map();
+    let gen = 0;
+    for (const [key, item] of courses) {
+      let c = colors && item.cid != null ? colors[String(item.cid)] : null;
+      if (!c || !distinct(c)) c = PALETTE.find((p) => !used.includes(p) && distinct(p));
+      // Palette exhausted: walk the hue wheel by the golden angle until a distinct colour turns up.
+      for (let tries = 0; !c && tries < 360; tries++) {
+        const cand = hslToHex((gen++ * 137.508) % 360, 0.62, 0.5);
+        if (distinct(cand) || tries === 359) c = cand;
+      }
+      used.push(c);
+      out.set(key, c);
+    }
+    return out;
+  }
+
+  function buildTodo(items, gpa, colors) {
+    const colorOf = assignCourseColors(items, colors);
     const LIMIT = 6;
     let expanded = false;
     const card = h('section', { class: 'card' });
@@ -359,6 +424,15 @@
     const store = (k, v) => { try { v === undefined ? (v = localStorage.getItem(k)) : localStorage.setItem(k, v); } catch (_) {} return v; };
     let fCourse = store('mc-f-course') || '';
     let fStatus = store('mc-f-status') || 'all';
+    // Collapsed state (remembered per browser). The <html> attribute lets the page CSS shrink the sidebar.
+    let collapsed = store('mc-todo-collapsed') === '1';
+    const setCollapsed = (v) => {
+      collapsed = v;
+      store('mc-todo-collapsed', v ? '1' : '0');
+      flag('data-mc-todo-collapsed', v);
+      paint();
+    };
+    flag('data-mc-todo-collapsed', collapsed);
     const courseNames = [...new Set(items.map((i) => i.course).filter(Boolean))].sort();
     if (fCourse && !courseNames.includes(fCourse)) fCourse = '';
 
@@ -408,6 +482,7 @@
         const overdue = new Date(i.date) < now;
         const li = h('li', {
           class: overdue ? 'overdue' : '',
+          style: `--course: ${colorOf.get(courseKey(i))}`,
           onmouseenter: () => showTip(i, li),
           onmouseleave: hideTip
         });
@@ -419,7 +494,7 @@
           }),
           h('div', { class: 'body' },
             h('a', { href: safeHref(i.url) }, i.title),
-            h('div', { class: 'meta' }, h('span', null, i.course), h('b', null, (overdue ? 'Overdue · ' : '') + dueLabel(i.date)))));
+            h('div', { class: 'meta' }, h('span', { class: 'course' }, h('i', { class: 'dot', 'aria-hidden': 'true' }), i.course), h('b', null, (overdue ? 'Overdue · ' : '') + dueLabel(i.date)))));
         return li;
       };
 
@@ -436,12 +511,31 @@
       const more = h('button', { class: 'link', hidden: rest.length <= LIMIT, onclick: () => { expanded = !expanded; paint(); } },
         expanded ? 'Show less' : `Show ${rest.length - LIMIT} more`);
 
+      if (collapsed) {
+        card.classList.add('collapsed');
+        card.replaceChildren(
+          h('button', {
+            class: 'toggle', type: 'button', title: 'Expand to-do',
+            'aria-label': 'Expand to-do panel', 'aria-expanded': 'false',
+            onclick: () => setCollapsed(false)
+          }, '«'),
+          ring(pct),
+          h('p', { class: 'muted small' }, `${open.length} left`));
+        return;
+      }
+      card.classList.remove('collapsed');
+
       card.replaceChildren(
         h('div', { class: 'row' },
           ring(pct),
-          h('div', null,
+          h('div', { class: 'head' },
             h('h3', null, 'To-Do', gpa != null && h('span', { class: 'chip', title: `${settings.gpa.scale} scale` }, `GPA ${gpa.toFixed(2)}`)),
-            h('p', { class: 'muted' }, `${done} of ${view.length} done · ${overdueCount} overdue`))),
+            h('p', { class: 'muted' }, `${done} of ${view.length} done · ${overdueCount} overdue`)),
+          h('button', {
+            class: 'toggle', type: 'button', title: 'Collapse to-do',
+            'aria-label': 'Collapse to-do panel', 'aria-expanded': 'true',
+            onclick: () => setCollapsed(true)
+          }, '»')),
         filterBar(),
         todaySection,
         rest.length ? list : todayItems.length ? null : h('p', { class: 'muted' }, fCourse || fStatus !== 'all' ? 'Nothing matches this filter.' : 'Nothing due — nice work!'),
@@ -574,6 +668,7 @@
   function unmount() {
     gen++;
     if (host) { host.remove(); host = null; }
+    root.removeAttribute('data-mc-todo-collapsed');
     closeCalc();
     hideTip();
     if (cardObserver) { cardObserver.disconnect(); cardObserver = null; }
@@ -619,7 +714,7 @@
       dataReady = true;
       if (body) {
         const gpa = wantGrades ? computeGpa(data.courses, settings.gpa.scale) : null;
-        body.replaceChildren(buildTodo(data.items, gpa));
+        body.replaceChildren(buildTodo(data.items, gpa, data.colors));
         if (!wantGrades) closeCalc();
       }
       if (wantGrades) { decorateCards(); watchCards(); }

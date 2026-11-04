@@ -21,6 +21,8 @@ html[data-mc-hide-feedback] .recent_feedback,
 html[data-mc-hide-feedback] .Sidebar__Section.recent-feedback { display: none !important; }
 
 /* Hide Canvas's own To Do when ours is on */
+html[data-mc-todo] #right-side,
+html[data-mc-todo] #right-side .todo-list-header,
 html[data-mc-todo] #right-side .todo-list,
 html[data-mc-todo] #right-side .to-do-list,
 html[data-mc-todo] #right-side .Sidebar__TodoListContainer,
@@ -29,14 +31,16 @@ html[data-mc-todo] #right-side #planner-todosidebar-item { display: none !import
 /* Grade badge on class cards */
 .ic-DashboardCard { position: relative; }
 .mc-grade {
-  position: absolute; top: 8px; right: 8px; z-index: 2;
+  position: absolute; top: 8px; left: 8px; z-index: 2;
   border: 0; border-radius: 999px; padding: 3px 9px;
   color: #fff; font: 600 12px/1.4 system-ui, sans-serif; cursor: pointer;
   box-shadow: 0 1px 4px rgba(0,0,0,.35);
 }
 
 /* Wider right sidebar when our to-do panel is on */
-html[data-mc-todo] #right-side-wrapper { width: 440px !important; max-width: 40vw; }
+html[data-mc-todo] #right-side-wrapper { width: 540px !important; max-width: 45vw; }
+/* Collapsed: shrink to a narrow strip (ring + expand button) */
+html[data-mc-todo][data-mc-todo-collapsed] #right-side-wrapper { width: 96px !important; min-width: 0; }
 html[data-mc-todo] #right-side-wrapper #right-side,
 html[data-mc-todo] #right-side-wrapper #mc-widget-host { width: 100% !important; box-sizing: border-box; }
 html[data-mc-todo] #not_right_side { min-width: 0; }
