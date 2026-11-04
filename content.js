@@ -153,7 +153,7 @@
     cacheBoot();
     applyStyles();
     whenDomReady(mountWidget);
-  });
+  }).catch(() => { /* extension reloaded before storage answered: this old copy just stops */ });
 
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'sync' || !changes.settings) return;
@@ -442,6 +442,8 @@
     if (!extAlive()) return;
     clearTimeout(tipTimer);
     tipTimer = setTimeout(async () => {
+      // Re-check: the extension may have been reloaded during the 350 ms hover delay.
+      if (!extAlive()) return;
       if (!tipHost) {
         tipHost = document.createElement('div');
         tipHost.style.cssText = 'position:fixed;z-index:2147483000;width:300px;pointer-events:none;display:none';
