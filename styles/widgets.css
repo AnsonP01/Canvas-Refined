@@ -114,3 +114,18 @@ button.link[hidden] { display: none; }
   color: var(--muted); border: 1px solid var(--border); white-space: nowrap;
 }
 .grading .caught-up { margin: 4px 0 0 18px; }
+
+/* Resize handle on the panel's left edge */
+:host { position: relative; display: block; padding-left: 12px; }
+.grip {
+  position: absolute; top: 0; bottom: 16px; left: 0; width: 8px;
+  border-radius: 4px; cursor: ew-resize; touch-action: none;
+}
+.grip::after {
+  content: ''; position: absolute; top: 50%; left: 3px; width: 2px; height: 36px;
+  margin-top: -18px; border-radius: 1px; background: var(--border); transition: background .15s;
+}
+.grip:hover::after, .grip:focus-visible::after, .grip.active::after { background: var(--accent); }
+.grip:hover, .grip:focus-visible, .grip.active { background: color-mix(in srgb, var(--accent) 18%, transparent); outline: none; }
+.mc.is-collapsed ~ .grip { display: none; }
+:host(.mc-collapsed) { padding-left: 0; }

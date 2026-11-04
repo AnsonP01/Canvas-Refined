@@ -59,6 +59,65 @@
     st.setProperty('--mc-grad-b', d.gradB);
   }
 
+  /* To-do panel width (set by dragging its left edge; remembered per browser). */
+  const TODO_W_KEY = 'mc-todo-width';
+  const TODO_W_MIN = 280;
+  const todoWidthMax = () => Math.max(TODO_W_MIN, Math.min(900, Math.round(window.innerWidth * 0.7)));
+  const clampTodoWidth = (w) => Math.round(Math.min(todoWidthMax(), Math.max(TODO_W_MIN, w)));
+  function setTodoWidth(w) { root.style.setProperty('--mc-todo-width', clampTodoWidth(w) + 'px'); }
+  function applySavedTodoWidth() {
+    let w = NaN;
+    try { w = Number(localStorage.getItem(TODO_W_KEY)); } catch (_) { /* storage blocked */ }
+    if (w > 0) setTodoWidth(w); else root.style.removeProperty('--mc-todo-width');
+  }
+  function saveTodoWidth(w) {
+    try { w == null ? localStorage.removeItem(TODO_W_KEY) : localStorage.setItem(TODO_W_KEY, String(clampTodoWidth(w))); } catch (_) {}
+  }
+
+  /** Drag handle on the panel's left edge. Dragging left widens the panel (it sits on the
+   *  right of the page). Arrow keys nudge it; double-click resets to the default width. */
+  function makeGrip(hostEl) {
+    const grip = h('div', {
+      class: 'grip', role: 'separator', tabindex: '0', 'aria-orientation': 'vertical',
+      'aria-label': 'Resize to-do panel', title: 'Drag to resize · double-click to reset'
+    });
+    const wrapper = () => hostEl.parentElement || hostEl;
+    const current = () => wrapper().getBoundingClientRect().width;
+    let startX = 0, startW = 0, dragging = false;
+
+    grip.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || root.hasAttribute('data-mc-todo-collapsed')) return;
+      e.preventDefault();
+      dragging = true; startX = e.clientX; startW = current();
+      grip.setPointerCapture(e.pointerId);
+      grip.classList.add('active');
+      root.setAttribute('data-mc-resizing', '');
+    });
+    grip.addEventListener('pointermove', (e) => {
+      if (dragging) setTodoWidth(startW + (startX - e.clientX));
+    });
+    const end = (e) => {
+      if (!dragging) return;
+      dragging = false;
+      grip.classList.remove('active');
+      root.removeAttribute('data-mc-resizing');
+      if (grip.hasPointerCapture(e.pointerId)) grip.releasePointerCapture(e.pointerId);
+      saveTodoWidth(current());
+    };
+    grip.addEventListener('pointerup', end);
+    grip.addEventListener('pointercancel', end);
+    grip.addEventListener('dblclick', () => { saveTodoWidth(null); applySavedTodoWidth(); });
+    grip.addEventListener('keydown', (e) => {
+      const step = e.shiftKey ? 60 : 20;
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      e.preventDefault();
+      const w = current() + (e.key === 'ArrowLeft' ? step : -step);
+      setTodoWidth(w);
+      saveTodoWidth(w);
+    });
+    return grip;
+  }
+
   // Dark mode follows the OS only while the user picked "system".
   mq.addEventListener('change', () => settings.dark.mode === 'system' && applyStyles());
 
@@ -82,6 +141,7 @@
     if (boot) settings = MC.sanitize(JSON.parse(boot));
   } catch (_) { /* storage may be blocked; ignore */ }
   applyStyles();
+  applySavedTodoWidth();
 
   chrome.storage.sync.get('settings').then(({ settings: s }) => {
     settings = MC.sanitize(s);
@@ -816,7 +876,7 @@
       const link = h('link', { rel: 'stylesheet', href: chrome.runtime.getURL('styles/widgets.css') });
       link.addEventListener('load', () => (me.style.visibility = 'visible'));
       body = h('div', { class: 'mc' }, h('p', { class: 'muted' }, 'Loading…'));
-      shadow.append(link, body);
+      shadow.append(link, body, makeGrip(me));
       side.before(me);
     }
 
@@ -830,7 +890,7 @@
         const grading = data.grading || [], staff = data.staff || [];
         const colorOf = assignCourseColors(
           [...data.items, ...staff.map((c) => ({ cid: c.id, course: c.name }))], data.colors);
-        const todoCard = buildTodo(data.items, gpa, colorOf, (c) => body.classList.toggle('is-collapsed', c));
+        const todoCard = buildTodo(data.items, gpa, colorOf, (c) => { body.classList.toggle('is-collapsed', c); if (host) host.classList.toggle('mc-collapsed', c); });
         body.replaceChildren(todoCard, buildGrading(grading, staff, colorOf) || '');
         if (!wantGrades) closeCalc();
       }

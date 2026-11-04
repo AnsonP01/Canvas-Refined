@@ -38,7 +38,9 @@ html[data-mc-todo] #right-side #planner-todosidebar-item { display: none !import
 }
 
 /* Wider right sidebar when our to-do panel is on */
-html[data-mc-todo] #right-side-wrapper { width: 540px !important; max-width: 45vw; }
+html[data-mc-todo] #right-side-wrapper { width: var(--mc-todo-width, 540px) !important; max-width: 70vw; }
+/* While dragging the resize handle: no text selection, resize cursor everywhere. */
+html[data-mc-resizing], html[data-mc-resizing] * { user-select: none !important; cursor: ew-resize !important; }
 /* Collapsed: shrink to a narrow strip (ring + expand button) */
 html[data-mc-todo][data-mc-todo-collapsed] #right-side-wrapper { width: 96px !important; min-width: 0; }
 html[data-mc-todo] #right-side-wrapper #right-side,
