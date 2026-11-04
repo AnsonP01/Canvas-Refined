@@ -378,6 +378,9 @@ html[data-mc-dark] [data-mc-lightfix="t"]:not(#mc-x):not(#mc-y) {
   background-color: color-mix(in srgb, var(--mc-accent) 22%, var(--mc-surface)) !important;
   color: var(--mc-text) !important;
 }
+html[data-mc-dark] [data-mc-borderfix]:not(#mc-x):not(#mc-y) {
+  border-color: var(--mc-border) !important;
+}
 html[data-mc-dark] [data-mc-textfix]:not(#mc-x):not(#mc-y) {
   color: var(--mc-text) !important;
 }

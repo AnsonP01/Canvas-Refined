@@ -1,0 +1,155 @@
+Canvas dark-mode build: 123 source files, 105 page bundles + common
+Contrast reference (lightest theme surface): #2f333a
+
+  3826  rules copied
+  1816  rules with changed colours
+   902  border/outline
+   683  background
+   605  text
+   113  shadow
+    14  text-shadow
+
+Examples (before -> after):
+  background:
+      #f5f5f5  ->  var(--mc-surface-2)
+      #E5F2F8  ->  color-mix(in srgb, #318bb5 24%, var(--mc-surface))
+      #fff  ->  var(--mc-surface)
+      #eee  ->  color-mix(in srgb, var(--mc-surface-2) 55%, var(--mc-border))
+      #efefef  ->  color-mix(in srgb, var(--mc-surface-2) 55%, var(--mc-border))
+      white  ->  var(--mc-surface)
+  border/outline:
+      #C7CDD1  ->  var(--mc-border)
+      #ccc  ->  var(--mc-border)
+      #eeeeee  ->  var(--mc-border)
+      #dddddd  ->  var(--mc-border)
+      #fff  ->  var(--mc-border)
+      #c1c7cf  ->  var(--mc-border)
+  text:
+      #EE0612  ->  #f8777d
+      #666666  ->  var(--mc-muted)
+      #888888  ->  var(--mc-muted)
+      #394B58  ->  var(--mc-text)
+      #8d642c  ->  #c8944d
+      #822b00  ->  #f5783b
+  shadow:
+      rgba(255,255,255,0.125)  ->  transparent
+      rgba(255,255,255,0.2)  ->  transparent
+      #fff  ->  var(--mc-border)
+      #394B58  ->  #618096
+      #C7CDD1  ->  var(--mc-border)
+      white  ->  var(--mc-border)
+  text-shadow:
+      rgba(255,255,255,0.75)  ->  transparent
+      white  ->  transparent
+      rgba(255,255,255,.5)  ->  transparent
+      rgba(255,255,255,.75)  ->  transparent
+      #fff  ->  transparent
+      #fbf8f8  ->  transparent
+
+Output sizes (bytes):
+  195398  common.css
+   44374  mobile_auth.css
+   25694  quizzes.css
+   20989  conversations_new.css
+   13895  course_settings.css
+   13614  screenreader_gradebook.css
+   12034  theme_editor.css
+   11736  learning_mastery.css
+   10703  calendar2.css
+    9879  styleguide.css
+    9620  speed_grader.css
+    9470  react_files.css
+    8291  discussions.css
+    8065  gradebook.css
+    6776  account_settings.css
+    6508  agenda_view.css
+    6398  what_gets_loaded_inside_the_tinymce_editor.css
+    6309  grading_period_sets.css
+    5868  canvas_quizzes.css
+    5795  profile_show.css
+    5756  login.css
+    5756  login_confirm.css
+    5711  grade_summary.css
+    5529  roster.css
+    5454  assignments.css
+    4946  profile_edit.css
+    4749  otp_login.css
+    3658  learning_outcomes.css
+    3560  tinymce.css
+    3477  conditional_release_editor.css
+    3350  assignments_2_student.css
+    3345  submission.css
+    3071  registration.css
+    2870  discussions_index.css
+    2652  discussions_edit.css
+    2643  context_cards.css
+    2548  new_assignments.css
+    2542  brand_config_index.css
+    2465  blueprint_courses.css
+    2404  choose_mastery_path.css
+    2392  course_wizard.css
+    1976  permissions.css
+    1907  context_modules2.css
+    1869  gradebook_uploads.css
+    1814  dashboard_card.css
+    1768  ui_listview.css
+    1629  slickgrid.css
+    1609  reports.css
+    1566  instructure_eportfolio.css
+    1508  announcements_index.css
+    1504  content_next.css
+    1393  context_module_progressions.css
+    1339  course_show.css
+    1245  dashboard.css
+    1240  act_as_modal.css
+    1226  assignments_edit.css
+    1176  account_admin_tools.css
+    1133  content_migrations.css
+    1100  syllabus.css
+     885  react_collaborations.css
+     870  user_list_boxes.css
+     869  alerts.css
+     864  messages.css
+     809  select_content_dialog.css
+     784  unauthorized_message.css
+     773  license_help.css
+     751  assignments_peer_review.css
+     653  side_tabs_table.css
+     623  context_list.css
+     614  user_notes.css
+     593  course_list.css
+     567  pairing_code.css
+     564  calendar_appointment_group_edit.css
+     561  statistics.css
+     557  moderate_quiz.css
+     529  conferences.css
+     519  user_logins.css
+     518  webzip_export.css
+     509  grading_standards.css
+     485  theme_preview.css
+     478  developer_keys.css
+     466  epub_exports.css
+     433  show_submissions_upload.css
+     378  media_player.css
+     359  assignment_grade_summary.css
+     347  question_bank.css
+     330  sub_accounts.css
+     328  all_courses.css
+     292  prior_users.css
+     273  k5_course.css
+     241  aligned_outcomes.css
+     228  self_enrollment.css
+     197  eportfolio_moderation.css
+     191  wiki_page.css
+     190  reminder_course_setup.css
+     190  roster_user.css
+     181  k5_common.css
+     165  ways_to_contact.css
+     163  enrollment_terms.css
+     163  grading_periods.css
+     161  k5_dashboard.css
+     161  terms.css
+     159  user_grades.css
+     153  assignments_2_teacher.css
+     130  locale.css
+     129  addpeople.css

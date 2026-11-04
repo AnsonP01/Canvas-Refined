@@ -13,3 +13,4 @@ desktop.ini
 node_modules/
 .env
 .claude/
+__pycache__/

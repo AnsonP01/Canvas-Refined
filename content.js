@@ -67,6 +67,51 @@
     st.setProperty('--mc-grad-a', d.gradA);
     st.setProperty('--mc-grad-b', d.gradB);
     whenDomReady(themeFix);
+    loadBundleCss();
+  }
+
+  /* Canvas page stylesheets. Every Canvas CSS bundle a page loads (grade_summary-<hash>.css,
+   * calendar2-<hash>.css, ...) has a generated dark counterpart in styles/canvas/ (see
+   * tools/build-canvas-dark.py). In dark mode, load it right after Canvas's own file so the
+   * cascade order matches Canvas's. Bundles the page doesn't load are never loaded. */
+  const BUNDLE_RE = /\/bundles\/([\w-]+?)-[0-9a-f]{10}\.css(?:$|[?#])/;
+  const seenBundles = new Map(); // bundle name -> Canvas's <link>
+  let bundleObs = null;
+  function noteBundleLink(el) {
+    if (el.nodeName !== 'LINK' || el.hasAttribute('data-mc-dark-for')) return;
+    const m = BUNDLE_RE.exec(el.getAttribute('href') || '');
+    const name = m && m[1];
+    if (!name || name === 'common' || seenBundles.has(name)) return; // common is in the manifest
+    if (!self.MC_CANVAS_BUNDLES || !self.MC_CANVAS_BUNDLES.has(name)) return;
+    seenBundles.set(name, el);
+    loadBundleCss();
+  }
+  function loadBundleCss() {
+    if (!root.hasAttribute('data-mc-dark') || !extAlive()) return;
+    for (const [name, canvasLink] of seenBundles) {
+      if (document.querySelector(`link[data-mc-dark-for="${name}"]`)) continue;
+      const l = document.createElement('link');
+      l.rel = 'stylesheet';
+      l.setAttribute('blocking', 'render'); // hold first paint for it, like Canvas's own CSS
+      l.setAttribute('data-mc-dark-for', name);
+      l.href = chrome.runtime.getURL(`styles/canvas/${name}.css`);
+      if (canvasLink.isConnected) canvasLink.after(l);
+      else (document.head || root).append(l);
+    }
+  }
+  function watchBundles() {
+    const scan = (n) => { for (const l of n.querySelectorAll('link[href*="/bundles/"]')) noteBundleLink(l); };
+    if (document.head) scan(document.head);
+    if (bundleObs) return;
+    // Only <html>'s and <head>'s direct children are watched (that's where Canvas puts its CSS).
+    bundleObs = new MutationObserver((recs) => {
+      for (const r of recs) for (const n of r.addedNodes) {
+        if (n.nodeName === 'LINK') noteBundleLink(n);
+        else if (n.nodeName === 'HEAD') { scan(n); bundleObs.observe(n, { childList: true }); }
+      }
+    });
+    bundleObs.observe(root, { childList: true });
+    if (document.head) bundleObs.observe(document.head, { childList: true });
   }
 
   /* Theme fixer. Canvas pages (Inbox, Courses/Groups/Calendar trays, Calendar,
@@ -78,7 +123,7 @@
    *   data-mc-textfix       text/icon too dark to read on its background -> theme text
    * Changed parts are re-checked inside the MutationObserver callback, which runs
    * before the browser paints, so nothing flashes. */
-  const LF = 'data-mc-lightfix', TF = 'data-mc-textfix';
+  const LF = 'data-mc-lightfix', TF = 'data-mc-textfix', BF = 'data-mc-borderfix';
   const FIX_EVENTS = ['mouseover', 'mouseout', 'click', 'focusin'];
   const SKIP = new Set(['IMG', 'VIDEO', 'CANVAS', 'IFRAME', 'PICTURE', 'SOURCE', 'SCRIPT', 'STYLE', 'LINK', 'META', 'NOSCRIPT', 'TEMPLATE', 'BR']);
   const MAX_FULL_SCAN = 12000; // huge pages (e.g. gradebook): rely on the per-change checks only
@@ -103,13 +148,29 @@
 
   /** 'n' or 't' if the element paints a light background that doesn't belong in dark mode. */
   function lightKind(el, cs) {
-    // Colours set inline are deliberate (course colours on cards, calendar events, swatches).
-    if (el.style && (el.style.backgroundColor || el.style.background)) return '';
     const c = rgbOf(cs.backgroundColor);
     if (!c || c[3] < 0.5 || relLum(c) < 0.45 || isAccent(c)) return '';
+    // A coloured background set inline that isn't pale is a course colour (dashboard cards,
+    // calendar events, swatches): keep it. Pale inline tints are Canvas UI states, e.g. the
+    // Inbox's selected conversation (rgb(229,242,248)), and get themed like any other.
+    if (el.style && (el.style.backgroundColor || el.style.background) &&
+        Math.max(c[0], c[1], c[2]) - Math.min(c[0], c[1], c[2]) > 16 && relLum(c) < 0.7) return '';
     const chroma = Math.max(c[0], c[1], c[2]) - Math.min(c[0], c[1], c[2]);
     if (chroma > 60) return ''; // vivid colours (badges, highlighter) are meant to stand out
     return chroma <= 12 ? 'n' : 't';
+  }
+  /** True if any visible border side is a light grey/pastel (glows on a dark page). */
+  const SIDES = ['Top', 'Right', 'Bottom', 'Left'];
+  function lightBorder(cs) {
+    for (const side of SIDES) {
+      if (!(parseFloat(cs['border' + side + 'Width']) > 0)) continue;
+      const st = cs['border' + side + 'Style'];
+      if (st === 'none' || st === 'hidden') continue;
+      const c = rgbOf(cs['border' + side + 'Color']);
+      if (!c || c[3] < 0.5 || relLum(c) < 0.45 || isAccent(c)) continue;
+      if (Math.max(c[0], c[1], c[2]) - Math.min(c[0], c[1], c[2]) <= 60) return true;
+    }
+    return false;
   }
   /** Colour actually behind el: the nearest ancestor (or el) with an opaque fill. */
   function bgBehind(el, memo) {
@@ -141,14 +202,16 @@
   const sigOf = (el) => (el.getAttribute('class') || '') + '|' + (el.getAttribute('style') || '');
   function checkEl(el, memo, reuse = false) {
     if (SKIP.has(el.tagName) || (el instanceof SVGElement && el.tagName !== 'svg')) return;
-    const wasMarked = el.hasAttribute(LF) || el.hasAttribute(TF);
+    const wasMarked = el.hasAttribute(LF) || el.hasAttribute(TF) || el.hasAttribute(BF);
     if (reuse && wasMarked && markedSig.get(el) === sigOf(el)) return;
     if (el.hasAttribute(LF)) el.removeAttribute(LF);
     if (el.hasAttribute(TF)) el.removeAttribute(TF);
+    if (el.hasAttribute(BF)) el.removeAttribute(BF);
     memo.delete(el);
     const cs = getComputedStyle(el);
     const kind = lightKind(el, cs);
     if (kind) { el.setAttribute(LF, kind); markedSig.set(el, sigOf(el)); }
+    if (lightBorder(cs)) { el.setAttribute(BF, ''); markedSig.set(el, sigOf(el)); }
     if (!hasOwnText(el)) return;
     const fg = rgbOf(cs.color);
     if (!fg || fg[3] < 0.3) return;
@@ -217,7 +280,7 @@
         fixObs.disconnect(); fixObs = null;
         for (const ev of FIX_EVENTS) document.removeEventListener(ev, onPointer, true);
       }
-      for (const el of document.querySelectorAll(`[${LF}],[${TF}]`)) { el.removeAttribute(LF); el.removeAttribute(TF); }
+      for (const el of document.querySelectorAll(`[${LF}],[${TF}],[${BF}]`)) { el.removeAttribute(LF); el.removeAttribute(TF); el.removeAttribute(BF); }
       return;
     }
     if (!document.body) return;
@@ -315,6 +378,7 @@
     const boot = localStorage.getItem('mc-boot');
     if (boot) { settings = MC.sanitize(JSON.parse(boot)); booted = true; }
   } catch (_) { /* storage may be blocked; ignore */ }
+  watchBundles();
   applyStyles();
   applySavedTodoWidth();
   // With cached settings, build the panel as soon as the HTML is ready instead of
@@ -766,7 +830,9 @@
       if (fCourse && i.course !== fCourse) return false;
       const t = new Date(i.date).getTime();
       if (fStatus === 'overdue') return t < Date.now();
-      if (fStatus === 'week') return t >= Date.now() && t < Date.now() + 7 * DAY;
+      // "Next N days" windows (planner data is fetched 45 days ahead, so 30 is fully covered).
+      const ahead = { week: 7, '2weeks': 14, '30days': 30 }[fStatus];
+      if (ahead) return t >= Date.now() && t < Date.now() + ahead * DAY;
       return true;
     };
 
@@ -778,7 +844,7 @@
       };
       return h('div', { class: 'filters' },
         sel([['', 'All classes'], ...courseNames.map((c) => [c, shortCourse(c)])], fCourse, (v) => { fCourse = v; store('mc-f-course', v); }, 'Filter by class'),
-        sel([['all', 'All'], ['overdue', 'Overdue'], ['week', 'Next 7 days']], fStatus, (v) => { fStatus = v; store('mc-f-status', v); }, 'Filter by status'));
+        sel([['all', 'All'], ['overdue', 'Overdue'], ['week', 'Next 7 days'], ['2weeks', 'Next 2 weeks'], ['30days', 'Next 30 days']], fStatus, (v) => { fStatus = v; store('mc-f-status', v); }, 'Filter by status'));
     }
 
     /** Check-off: fade the row, mark done locally, then tell Canvas (undo on failure). */
