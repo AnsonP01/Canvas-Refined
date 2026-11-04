@@ -1,7 +1,7 @@
 /**
  * popup.js — settings panel. Binds every [data-key="a.b"] control to the
- * matching settings path, auto-saves (debounced) to chrome.storage.sync and
- * keeps a live preview. Export/import is plain JSON, sanitized on import.
+ * matching settings path, auto-saves (debounced) to chrome.storage.sync.
+ * Export/import is plain JSON, sanitized on import.
  */
 (async () => {
   'use strict';
@@ -61,21 +61,6 @@
     $('#schedule').hidden = settings.dark.mode !== 'schedule';
     $('#gradients').style.opacity = settings.dashboard.gradient ? 1 : 0.5;
     for (const b of tiles.children) b.setAttribute('aria-pressed', String(b.dataset.theme === settings.dark.theme));
-
-    // Preview: mimic what the dashboard would look like with current choices.
-    const p = $('#preview'), d = settings.dashboard;
-    const dark = settings.dark.enabled;
-    const th = MC.THEMES[settings.dark.theme];
-    p.style.background = dark ? th.bg : '#f2f4f7';
-    p.style.color = dark ? th.text : '#2d3b45';
-    p.style.fontFamily = MC.FONTS[d.font].css || '';
-    for (const card of p.querySelectorAll('.pv-card')) {
-      card.style.background = dark ? th.surface : '#fff';
-      card.firstElementChild.style.background = d.gradient
-        ? `linear-gradient(135deg, ${d.gradA}, ${d.gradB})`
-        : accent();
-      card.style.height = d.condensed ? '70px' : '88px';
-    }
   }
 
   /* ---------- export / import / reset ---------- */

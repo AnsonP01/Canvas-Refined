@@ -1,5 +1,4 @@
-/* The settings popup is always light, whatever the OS or Canvas theme is.
-   (The #preview box below still shows the selected Canvas theme.) */
+/* The settings popup is always light, whatever the OS or Canvas theme is. */
 :root {
   --bg: #fff; --card: #f5f6f8; --tx: #1f2933; --mu: #6b7780; --bd: #dde1e5;
   color-scheme: light; /* native controls (selects, time/color pickers, scrollbars) render light too */
@@ -36,13 +35,6 @@ input:focus-visible, select:focus-visible, button:focus-visible { outline: 2px s
 .tile .mock i { display: block; height: 8px; border-radius: 3px; }
 .tile .mock i:last-child { width: 40%; background: var(--ac, #6c8cff); }
 .tile span { display: block; font-size: 11px; padding: 3px 0; background: var(--card); }
-
-/* live preview */
-#preview { display: flex; gap: 8px; padding: 10px; border-radius: 10px; margin-bottom: 10px; border: 1px solid var(--bd); }
-.pv-card { flex: 1; border-radius: 8px; overflow: hidden; border: 1px solid rgba(128,128,128,.3); }
-.pv-hero { height: 34px; }
-.pv-body { padding: 6px 8px; display: flex; flex-direction: column; font-size: 12px; }
-.pv-body span { font-size: 11px; opacity: .7; }
 
 .btns { display: flex; gap: 8px; }
 button { flex: 1; padding: 7px; border-radius: 6px; border: 1px solid var(--bd); background: var(--bg); color: var(--tx); cursor: pointer; font: inherit; }
