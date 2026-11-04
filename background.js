@@ -1,9 +1,11 @@
 /**
- * background.js — service worker.
+ * background.js — service worker (Chrome) / event page (Firefox).
  * Only job: wake up exactly when the dark-mode schedule flips and tell open
  * Canvas tabs to re-check. No polling; the worker sleeps the rest of the time.
  */
-importScripts('shared.js');
+// Chrome runs this as a service worker and loads shared.js here. Firefox runs it as an
+// event page, where the manifest's background.scripts has already loaded shared.js.
+if (typeof importScripts === 'function') importScripts('shared.js');
 
 const ALARM = 'mc-schedule';
 

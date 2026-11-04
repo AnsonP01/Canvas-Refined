@@ -45,6 +45,10 @@
     });
   }
 
+  // "Follow system" dark mode: restyle the popup if the OS switches while it's open.
+  const sysDark = matchMedia('(prefers-color-scheme: dark)');
+  sysDark.addEventListener('change', () => render(false));
+
   /** Effective accent: the user's custom one, else the current theme's. */
   const accent = () => settings.accent || MC.THEMES[settings.dark.theme].accent;
 
@@ -57,7 +61,12 @@
         if (el.type === 'checkbox') el.checked = v; else el.value = v;
       }
     }
-    document.documentElement.style.setProperty('--ac', accent());
+    // Popup follows Canvas's current look: the chosen theme while dark mode is active, light otherwise.
+    const html = document.documentElement;
+    html.setAttribute('data-mc-theme', settings.dark.theme);
+    if (MC.isDarkNow(settings, sysDark.matches)) html.setAttribute('data-mc-dark', '');
+    else html.removeAttribute('data-mc-dark');
+    html.style.setProperty('--ac', accent());
     $('#schedule').hidden = settings.dark.mode !== 'schedule';
     $('#gradients').style.opacity = settings.dashboard.gradient ? 1 : 0.5;
     for (const b of tiles.children) b.setAttribute('aria-pressed', String(b.dataset.theme === settings.dark.theme));
@@ -67,15 +76,30 @@
 
   const msg = (t) => { $('#msg').textContent = t; setTimeout(() => ($('#msg').textContent = ''), 3000); };
 
+  // Firefox closes an extension popup the moment a file picker opens, so the chosen file
+  // never arrives. There, Import opens this same panel in a tab, where picking a file works.
+  const isFirefox = navigator.userAgent.includes('Firefox/');
+  const inTab = new URLSearchParams(location.search).has('tab');
+  if (inTab) document.documentElement.classList.add('tab');
+
   $('#export').addEventListener('click', () => {
-    const url = URL.createObjectURL(new Blob([JSON.stringify(settings, null, 2)], { type: 'application/json' }));
-    const a = Object.assign(document.createElement('a'), { href: url, download: 'my-canvas-settings.json' });
+    // A data: URL (not a blob: URL) so the download still works if the popup closes mid-way.
+    const href = 'data:application/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(settings, null, 2));
+    const a = Object.assign(document.createElement('a'), { href, download: 'my-canvas-settings.json' });
+    document.body.append(a); // Firefox only follows clicks on links that are in the page
     a.click();
-    URL.revokeObjectURL(url);
+    a.remove();
     msg('Exported.');
   });
 
-  $('#import').addEventListener('click', () => $('#file').click());
+  $('#import').addEventListener('click', () => {
+    if (isFirefox && !inTab) {
+      chrome.tabs.create({ url: chrome.runtime.getURL('popup.html?tab') });
+      window.close();
+      return;
+    }
+    $('#file').click();
+  });
   $('#file').addEventListener('change', async (e) => {
     const f = e.target.files[0];
     e.target.value = '';
@@ -94,6 +118,21 @@
     render();
     msg('Reset to defaults.');
   });
+
+  /* ---------- site access ---------- */
+
+  // Chrome grants the Canvas host permission at install. Firefox can leave it off (and the
+  // user can revoke it in either browser), which silently stops everything, so offer to fix it.
+  const CANVAS = { origins: ['*://*.instructure.com/*'] };
+  const access = $('#access');
+  if (chrome.permissions) {
+    chrome.permissions.contains(CANVAS).then((ok) => { access.hidden = ok; }).catch(() => {});
+    $('#grant').addEventListener('click', () => {
+      // Called straight from the click, with nothing awaited first: Firefox only shows the
+      // permission prompt during the click itself.
+      chrome.permissions.request(CANVAS).then((ok) => { if (ok) access.hidden = true; }).catch(() => {});
+    });
+  }
 
   render();
 })();

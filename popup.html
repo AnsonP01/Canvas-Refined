@@ -3,6 +3,10 @@
 <head>
   <meta charset="utf-8">
   <title>My Canvas</title>
+  <link rel="stylesheet" href="styles/themes/graphite.css">
+  <link rel="stylesheet" href="styles/themes/obsidian.css">
+  <link rel="stylesheet" href="styles/themes/sunset-rose.css">
+  <link rel="stylesheet" href="styles/themes/night.css">
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
@@ -10,6 +14,12 @@
     <h1>My Canvas</h1>
     <span class="hint">Changes save automatically</span>
   </header>
+
+  <section id="access" class="access" hidden>
+    <p>My Canvas doesn't have permission to run on Canvas yet.</p>
+    <button id="grant" type="button">Allow on Canvas</button>
+    <p class="hint">Then reload your Canvas tab.</p>
+  </section>
 
   <section>
     <h2>Dark mode</h2>

@@ -6,6 +6,13 @@
 (function (root) {
   'use strict';
 
+  // Firefox: `browser.*` is its promise-based version of the same API, so use it for every
+  // `chrome.*` call (all calls in this extension use promises, never callbacks).
+  // Chrome has no `browser`, so this does nothing there.
+  if (typeof root.browser === 'object' && root.browser && root.browser.runtime && root.chrome !== root.browser) {
+    try { root.chrome = root.browser; } catch (_) { /* read-only: Firefox's chrome.* then works as-is */ }
+  }
+
   /** Default settings. Also defines the schema used to sanitize imports. */
   const DEFAULTS = {
     dark: {

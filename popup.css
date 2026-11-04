@@ -1,8 +1,14 @@
-/* The settings popup is always light, whatever the OS or Canvas theme is. */
+/* The settings popup matches what Canvas looks like right now: light when dark mode is off,
+   the chosen theme's colours (styles/themes/*.css) when it's on. popup.js sets the flags. */
 :root {
   --bg: #fff; --card: #f5f6f8; --tx: #1f2933; --mu: #6b7780; --bd: #dde1e5;
   color-scheme: light; /* native controls (selects, time/color pickers, scrollbars) render light too */
 }
+html[data-mc-dark] {
+  --bg: var(--mc-bg); --card: var(--mc-surface); --tx: var(--mc-text); --mu: var(--mc-muted); --bd: var(--mc-border);
+  color-scheme: dark;
+}
+html[data-mc-dark] .tile[aria-pressed="true"] span { color: var(--mc-text); }
 * { box-sizing: border-box; }
 body { margin: 0; width: 360px; padding: 12px; background: var(--bg); color: var(--tx);
   font: 13px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif; }
@@ -40,3 +46,12 @@ input:focus-visible, select:focus-visible, button:focus-visible { outline: 2px s
 button { flex: 1; padding: 7px; border-radius: 6px; border: 1px solid var(--bd); background: var(--bg); color: var(--tx); cursor: pointer; font: inherit; }
 button:hover { border-color: var(--ac, #6c8cff); }
 button.ghost { flex: 0 0 auto; color: var(--mu); }
+
+/* "Allow on Canvas" prompt, shown only when the browser hasn't granted site access (Firefox can withhold it) */
+.access { border-color: var(--ac, #6c8cff); }
+.access p { margin: 0 0 8px; }
+.access .hint { margin: 8px 0 0; }
+.access button { width: 100%; }
+
+/* Opened as a tab (Firefox import, see popup.js): centre the panel on the page */
+html.tab body { margin: 24px auto; }

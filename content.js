@@ -453,8 +453,12 @@
     for (let i = 0; i < maxPages && url; i++) {
       // Never send the logged-in session anywhere but this Canvas site (pagination
       // links come from the server response, so verify them).
-      if (new URL(url, location.origin).origin !== location.origin) throw new Error('cross-origin URL blocked');
-      const r = await fetch(url, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+      const abs = new URL(url, location.origin);
+      if (abs.origin !== location.origin) throw new Error('cross-origin URL blocked');
+      // Absolute URL + 'include': Firefox may treat a content script's request as the
+      // extension's rather than the page's, and would then leave the login cookie off.
+      // Safe because the URL was just checked to be this Canvas site.
+      const r = await fetch(abs.href, { credentials: 'include', headers: { Accept: 'application/json' } });
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const j = await r.json();
       Array.isArray(j) ? out.push(...j) : out.push(j);
@@ -736,9 +740,10 @@
   /** Mark an item complete in Canvas (same thing its own planner does). */
   async function markComplete(item) {
     const csrf = decodeURIComponent((document.cookie.match(/(?:^|;\s*)_csrf_token=([^;]+)/) || [])[1] || '');
-    const r = await fetch(item.oid ? `/api/v1/planner/overrides/${item.oid}` : '/api/v1/planner/overrides', {
+    const path = item.oid ? `/api/v1/planner/overrides/${item.oid}` : '/api/v1/planner/overrides';
+    const r = await fetch(new URL(path, location.origin).href, { // absolute + 'include': see api()
       method: item.oid ? 'PUT' : 'POST',
-      credentials: 'same-origin',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-Token': csrf },
       body: JSON.stringify({ plannable_type: item.type, plannable_id: item.pid, marked_complete: true })
     });

@@ -1,6 +1,6 @@
 # My Canvas
 
-A lightweight Chrome / Brave extension (Manifest V3) that improves the Canvas LMS (`*.instructure.com`) with dark mode, dashboard customization, a better to-do list, and grade tools. Vanilla JavaScript, no frameworks, no build step, no tracking.
+A lightweight Chrome / Brave / Firefox extension (Manifest V3) that improves the Canvas LMS (`*.instructure.com`) with dark mode, dashboard customization, a better to-do list, and grade tools. Vanilla JavaScript, no frameworks, no build step, no tracking.
 
 ## Features
 
@@ -33,6 +33,8 @@ A lightweight Chrome / Brave extension (Manifest V3) that improves the Canvas LM
 
 ## Install (unpacked)
 
+### Chrome / Brave / Edge (Chrome 121+)
+
 1. Download or clone this repository.
 2. Open `chrome://extensions` (Chrome) or `brave://extensions` (Brave).
 3. Enable **Developer mode**.
@@ -40,6 +42,17 @@ A lightweight Chrome / Brave extension (Manifest V3) that improves the Canvas LM
 5. Open your Canvas site and click the extension icon to adjust settings.
 
 After editing any file, click the reload icon on the extension and refresh Canvas.
+
+### Firefox (128+)
+
+1. Download or clone this repository.
+2. Open `about:debugging#/runtime/this-firefox`.
+3. Click **Load Temporary Add-on…** and select `manifest.json` in this folder.
+4. Open your Canvas site. If the popup shows **Allow on Canvas**, click it, then reload Canvas.
+
+A temporary add-on is removed when Firefox restarts. To keep it installed, sign it through [addons.mozilla.org](https://addons.mozilla.org/developers/) (as an unlisted add-on if you don't want it in the store), then install the signed `.xpi` file.
+
+In Firefox, **Import JSON** opens the settings in a tab, because Firefox closes the popup when a file picker opens.
 
 ### Using a custom Canvas domain
 
@@ -51,7 +64,7 @@ The extension runs on `*.instructure.com`. If your school uses another domain (e
 manifest.json      Manifest V3 config
 shared.js          Settings schema, defaults, sanitizing, schedule helpers (used everywhere)
 content.js         Style layer (settings -> <html> attributes) + dashboard widgets
-background.js      Service worker: wakes only when the dark-mode schedule flips
+background.js      Service worker (Chrome) / event page (Firefox): wakes only when the dark-mode schedule flips
 popup.html/.css/.js  Settings panel
 styles/
   dark.css         Dark-mode rules driven by --mc-* CSS variables
