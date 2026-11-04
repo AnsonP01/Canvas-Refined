@@ -11,10 +11,20 @@
   const get = (o, p) => p.split('.').reduce((a, k) => a && a[k], o);
   const set = (o, p, v) => { const k = p.split('.'); const l = k.pop(); k.reduce((a, x) => a[x], o)[l] = v; };
 
-  // Debounced save: dragging a color picker fires many events, but
-  // chrome.storage.sync is rate-limited, so write at most once per pause.
-  let timer;
-  const save = () => { clearTimeout(timer); timer = setTimeout(() => MC.save(settings), 350); };
+  // Saving: toggles, dropdowns and theme tiles save at once. Sliders and colour pickers fire
+  // many events while dragging and chrome.storage.sync is rate-limited, so those wait for a
+  // short pause. Anything still waiting is saved the moment the popup closes: closing it
+  // otherwise cancels the wait and the last change would be lost.
+  let timer, dirty = false;
+  const flush = () => {
+    clearTimeout(timer);
+    if (!dirty) return;
+    dirty = false;
+    MC.save(settings).catch(() => msg('Could not save settings. Try again.'));
+  };
+  const save = (immediately) => { dirty = true; clearTimeout(timer); if (immediately) flush(); else timer = setTimeout(flush, 350); };
+  addEventListener('pagehide', flush);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) flush(); });
 
   /* ---------- build dynamic controls ---------- */
 
@@ -30,7 +40,7 @@
     b.innerHTML = `<div class="mock" style="background:${t.bg}"><i style="background:${t.surface}"></i><i style="background:${t.surface}"></i><i></i></div><span></span>`;
     b.querySelector('span').textContent = t.label;
     // Choosing a theme also switches dark mode on, so the choice is visible immediately.
-    b.addEventListener('click', () => { settings.dark.theme = k; settings.dark.enabled = true; settings.accent = ''; render(true); save(); });
+    b.addEventListener('click', () => { settings.dark.theme = k; settings.dark.enabled = true; settings.accent = ''; render(true); save(true); });
     tiles.append(b);
   }
 
@@ -40,7 +50,7 @@
   for (const el of controls) {
     el.addEventListener('input', () => {
       set(settings, el.dataset.key, el.type === 'checkbox' ? el.checked : el.type === 'range' ? Number(el.value) : el.value);
-      save();
+      save(!['range', 'color', 'time'].includes(el.type));
       render(false);
     });
   }
