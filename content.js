@@ -377,6 +377,15 @@
   }
 
   /** Only link to pages on this Canvas site (blocks javascript:/foreign URLs from API data). */
+  /** Display name for a class: drops a trailing registrar/SIS code in parentheses, e.g.
+   *  "IST 210, Section 002: Org Data (22681--UP---P-IST-----210-------002-)"
+   *    -> "IST 210, Section 002: Org Data". Names without such a code are unchanged. */
+  function shortCourse(name) {
+    const s = String(name || '');
+    const m = /^(.*\S)\s*\(([^()]*)\)\s*$/.exec(s);
+    return m && /\d/.test(m[2]) && /-/.test(m[2]) ? m[1] : s;
+  }
+
   function safeHref(u) {
     try {
       const url = new URL(u, location.origin);
@@ -436,7 +445,7 @@
         document.body.append(tipHost);
       }
       tipFor = item;
-      const meta = [item.course, item.pts != null ? `${item.pts} pts` : null].filter(Boolean).join(' · ');
+      const meta = [shortCourse(item.course), item.pts != null ? `${item.pts} pts` : null].filter(Boolean).join(' · ');
       tipBody.replaceChildren(h('h3', null, item.title), h('p', { class: 'muted small' }, meta), h('p', { class: 'desc muted' }, 'Loading…'));
       tipHost.style.display = 'block';
       placeTip(li);
@@ -565,7 +574,7 @@
         return s;
       };
       return h('div', { class: 'filters' },
-        sel([['', 'All classes'], ...courseNames.map((c) => [c, c])], fCourse, (v) => { fCourse = v; store('mc-f-course', v); }, 'Filter by class'),
+        sel([['', 'All classes'], ...courseNames.map((c) => [c, shortCourse(c)])], fCourse, (v) => { fCourse = v; store('mc-f-course', v); }, 'Filter by class'),
         sel([['all', 'All'], ['overdue', 'Overdue'], ['week', 'Next 7 days']], fStatus, (v) => { fStatus = v; store('mc-f-status', v); }, 'Filter by status'));
     }
 
@@ -608,14 +617,40 @@
           }),
           h('div', { class: 'body' },
             h('a', { href: safeHref(i.url) }, i.title),
-            h('div', { class: 'meta' }, h('span', { class: 'course' }, h('i', { class: 'dot', 'aria-hidden': 'true' }), i.course), h('b', null, (overdue ? 'Overdue · ' : '') + dueLabel(i.date)))));
+            h('div', { class: 'meta' }, h('span', { class: 'course' }, h('i', { class: 'dot', 'aria-hidden': 'true' }), shortCourse(i.course))),
+            h('div', { class: 'due' }, (overdue ? 'Overdue ' : 'Due ') + dueLabel(i.date))));
         return li;
       };
 
       // Items due today get their own section; everything else stays in the main list.
       const todayItems = open.filter(isToday);
       const rest = open.filter((i) => !isToday(i));
-      const list = h('ul', { class: 'todo' }, rest.slice(0, expanded ? undefined : LIMIT).map(row));
+      // Everything else is grouped by the day it's due (items are already in date order).
+      // Each day's count covers the whole day, even if "Show more" hides some of its items.
+      const dayKey = (i) => new Date(i.date).toDateString();
+      const perDay = new Map();
+      for (const i of rest) perDay.set(dayKey(i), (perDay.get(dayKey(i)) || 0) + 1);
+      const shown = rest.slice(0, expanded ? undefined : LIMIT);
+      const days = [];
+      for (const i of shown) {
+        const last = days[days.length - 1];
+        if (last && last.key === dayKey(i)) last.items.push(i);
+        else days.push({ key: dayKey(i), date: new Date(i.date), items: [i] });
+      }
+      const startToday = new Date(now).setHours(0, 0, 0, 0);
+      const dayLabel = (d) => {
+        const diff = Math.round((new Date(d).setHours(0, 0, 0, 0) - startToday) / DAY);
+        const name = d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+        if (diff === 1) return { text: `Tomorrow · ${name}`, past: false };
+        if (diff < 0) return { text: `${name} · Overdue`, past: true };
+        return { text: name, past: false };
+      };
+      const list = h('div', { class: 'days' }, days.map((g) => {
+        const { text, past } = dayLabel(g.date);
+        return h('div', { class: 'day' },
+          h('h4', { class: past ? 'day-h past' : 'day-h' }, text, h('span', { class: 'day-n' }, String(perDay.get(g.key)))),
+          h('ul', { class: 'todo' }, g.items.map(row)));
+      }));
       const todaySection = todayItems.length
         ? h('div', { class: 'today' },
             h('h4', null, 'Due today', h('span', { class: 'chip' }, String(todayItems.length))),
@@ -640,7 +675,8 @@
       }
       card.classList.remove('collapsed');
 
-      card.replaceChildren(
+      // Native replaceChildren() turns null into the text "null", so drop empty sections first.
+      card.replaceChildren(...[
         h('div', { class: 'row' },
           ring(pct),
           h('div', { class: 'head' },
@@ -654,7 +690,7 @@
         filterBar(),
         todaySection,
         rest.length ? list : todayItems.length ? null : h('p', { class: 'muted' }, fCourse || fStatus !== 'all' ? 'Nothing matches this filter.' : 'Nothing due — nice work!'),
-        more);
+        more].filter(Boolean));
     }
 
     paint();
@@ -689,9 +725,8 @@
             h('span', { class: 'badge', title: plural(it.count, 'submission needs grading', 'submissions need grading') }, String(it.count)),
             h('div', { class: 'body' },
               h('a', { href: safeHref(it.url), target: '_blank', rel: 'noopener' }, it.title),
-              h('div', { class: 'meta' },
-                h('span', null, it.pts != null ? `${it.pts} pts` : ''),
-                h('b', null, it.due ? 'Due ' + dueLabel(it.due) : 'No due date'))))));
+              it.pts != null && h('div', { class: 'meta' }, h('span', null, `${it.pts} pts`)),
+              h('div', { class: 'due' }, it.due ? 'Due ' + dueLabel(it.due) : 'No due date')))));
         more.hidden = g.items.length <= PER_GROUP;
         more.textContent = more.hidden ? '' : showAll ? 'Show less' : `Show ${g.items.length - PER_GROUP} more`;
       };
@@ -700,7 +735,7 @@
       return h('details', { class: 'group', open: true, style: `--course: ${color}` },
         h('summary', null,
           h('i', { class: 'dot', 'aria-hidden': 'true' }),
-          h('span', { class: 'gname' }, g.name),
+          h('span', { class: 'gname' }, shortCourse(g.name)),
           g.role && h('span', { class: 'role', title: `Your role: ${g.role}` }, g.role),
           h('span', { class: 'count', title: plural(g.total, 'submission', 'submissions') + ' to grade' }, String(g.total))),
         g.items.length ? ul : h('p', { class: 'muted small caught-up' }, 'All caught up, nothing to grade.'),
@@ -815,7 +850,7 @@
     sh.append(
       h('link', { rel: 'stylesheet', href: chrome.runtime.getURL('styles/widgets.css') }),
       h('div', { class: 'mc pop' },
-        h('h3', null, course.name),
+        h('h3', null, shortCourse(course.name)),
         h('p', { class: 'muted' }, `Current grade ${course.score.toFixed(1)}%`),
         box));
     document.body.append(popHost);
@@ -886,7 +921,7 @@
       courseMap = new Map(data.courses.map((c) => [String(c.id), c]));
       dataReady = true;
       if (body) {
-        const gpa = wantGrades ? computeGpa(data.courses, settings.gpa.scale) : null;
+        const gpa = settings.gpa.showGpa ? computeGpa(data.courses, settings.gpa.scale) : null;
         const grading = data.grading || [], staff = data.staff || [];
         const colorOf = assignCourseColors(
           [...data.items, ...staff.map((c) => ({ cid: c.id, course: c.name }))], data.colors);

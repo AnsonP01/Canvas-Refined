@@ -30,7 +30,8 @@
     },
     todo: { enabled: true },
     gpa: {
-      enabled: true,
+      enabled: true,         // grade badges on class cards
+      showGpa: true,         // GPA chip in the to-do panel header
       scale: '4.0',          // '4.0' (college) | '5.0' (weighted high school)
       calculator: true       // "what grade do I need"
     }

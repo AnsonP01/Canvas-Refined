@@ -40,7 +40,7 @@ ul.todo li {
   display: flex; gap: 12px; padding: 12px 14px;
   border: 1px solid var(--border); border-radius: 10px;
   border-left: 4px solid var(--course, var(--accent));
-  background: color-mix(in srgb, var(--course, var(--accent)) 8%, var(--bg));
+  background: transparent;
   transition: opacity .2s, transform .2s, border-color .15s, background-color .15s;
 }
 ul.todo li:hover { border-color: color-mix(in srgb, var(--course, var(--accent)) 60%, var(--border)); border-left-color: var(--course, var(--accent)); }
@@ -68,7 +68,8 @@ button.link[hidden] { display: none; }
 .today h4 { margin: 0 0 2px; font-size: 13px; font-weight: 650; display: flex; align-items: center; gap: 8px; color: var(--accent); }
 .today { padding-bottom: 10px; }
 .today h4 { margin-bottom: 8px; }
-.today ul.todo li { background: color-mix(in srgb, var(--course, var(--accent)) 8%, var(--bg)); }
+/* Today's blocks sit in front of the tinted "Due today" box: solid panel colour + a slight lift */
+.today ul.todo li { background: var(--bg); box-shadow: 0 1px 3px rgba(0, 0, 0, .18); }
 
 /* Collapse / expand */
 .head { flex: 1; min-width: 0; }
@@ -129,3 +130,21 @@ button.link[hidden] { display: none; }
 .grip:hover, .grip:focus-visible, .grip.active { background: color-mix(in srgb, var(--accent) 18%, transparent); outline: none; }
 .mc.is-collapsed ~ .grip { display: none; }
 :host(.mc-collapsed) { padding-left: 0; }
+
+/* Due line at the bottom of each assignment block */
+.due { margin-top: 6px; font-size: 12px; font-weight: 600; color: var(--muted); }
+li.overdue .due { color: var(--danger); }
+
+/* To-do grouped by due day */
+.days { display: flex; flex-direction: column; gap: 14px; }
+.day-h {
+  display: flex; align-items: center; gap: 8px; margin: 0 0 8px;
+  font-size: 12px; font-weight: 700; letter-spacing: .02em; color: var(--muted);
+}
+.day-h::after { content: ''; flex: 1; height: 1px; background: var(--border); order: 2; }
+.day-h .day-n {
+  order: 3; font-size: 11px; font-weight: 650; padding: 0 7px; border-radius: 999px;
+  border: 1px solid var(--border); color: var(--muted);
+}
+.day-h.past { color: var(--danger); }
+.day-h.past .day-n { border-color: var(--danger); color: var(--danger); }

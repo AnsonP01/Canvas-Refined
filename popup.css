@@ -1,9 +1,8 @@
+/* The settings popup is always light, whatever the OS or Canvas theme is.
+   (The #preview box below still shows the selected Canvas theme.) */
 :root {
   --bg: #fff; --card: #f5f6f8; --tx: #1f2933; --mu: #6b7780; --bd: #dde1e5;
-  color-scheme: light dark;
-}
-@media (prefers-color-scheme: dark) {
-  :root { --bg: #1b1d21; --card: #26292f; --tx: #e6e8eb; --mu: #9aa1ab; --bd: #3a3f47; }
+  color-scheme: light; /* native controls (selects, time/color pickers, scrollbars) render light too */
 }
 * { box-sizing: border-box; }
 body { margin: 0; width: 360px; padding: 12px; background: var(--bg); color: var(--tx);
