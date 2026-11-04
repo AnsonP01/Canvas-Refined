@@ -1,0 +1,9 @@
+html[data-mc-theme="sunset-rose"] {
+  --mc-bg: #1f1418;
+  --mc-surface: #2e1d24;
+  --mc-surface-2: #3a252d;
+  --mc-text: #f6e6ea;
+  --mc-muted: #b99aa3;
+  --mc-border: #4a2f39;
+  --mc-accent: #f4728e;
+}

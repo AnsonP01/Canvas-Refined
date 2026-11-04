@@ -1,0 +1,36 @@
+/* Dashboard customization, toggled by attributes on <html>. */
+
+html[data-mc-dark][data-mc-theme-cards] .ic-DashboardCard__header_hero {
+  background: var(--mc-accent) !important;
+}
+
+html[data-mc-gradient] .ic-DashboardCard__header_hero {
+  background: linear-gradient(135deg, var(--mc-grad-a, #6c8cff), var(--mc-grad-b, #c85aa0)) !important;
+}
+
+html[data-mc-condensed] .ic-DashboardCard { width: 200px !important; height: 190px !important; }
+html[data-mc-condensed] .ic-DashboardCard__header_hero { height: 80px !important; }
+html[data-mc-condensed] .ic-DashboardCard__header-subtitle,
+html[data-mc-condensed] .ic-DashboardCard__header-term { display: none !important; }
+
+html[data-mc-hide-logo] .ic-app-header__logomark-container,
+html[data-mc-hide-logo] .ic-app-header__logomark,
+html[data-mc-hide-logo] .ic-app-header__logo-link { display: none !important; }
+
+html[data-mc-hide-feedback] .recent_feedback,
+html[data-mc-hide-feedback] .Sidebar__Section.recent-feedback { display: none !important; }
+
+/* Hide Canvas's own To Do when ours is on */
+html[data-mc-todo] #right-side .todo-list,
+html[data-mc-todo] #right-side .to-do-list,
+html[data-mc-todo] #right-side .Sidebar__TodoListContainer,
+html[data-mc-todo] #right-side #planner-todosidebar-item { display: none !important; }
+
+/* Grade badge on class cards */
+.ic-DashboardCard { position: relative; }
+.mc-grade {
+  position: absolute; top: 8px; right: 8px; z-index: 2;
+  border: 0; border-radius: 999px; padding: 3px 9px;
+  color: #fff; font: 600 12px/1.4 system-ui, sans-serif; cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0,0,0,.35);
+}

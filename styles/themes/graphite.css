@@ -1,0 +1,9 @@
+html[data-mc-theme="graphite"] {
+  --mc-bg: #1b1d21;
+  --mc-surface: #26292f;
+  --mc-surface-2: #2f333a;
+  --mc-text: #e6e8eb;
+  --mc-muted: #9aa1ab;
+  --mc-border: #3a3e46;
+  --mc-accent: #6c8cff;
+}

@@ -1,0 +1,9 @@
+html[data-mc-theme="obsidian"] {
+  --mc-bg: #08080a;
+  --mc-surface: #131316;
+  --mc-surface-2: #1c1c21;
+  --mc-text: #e4e4e7;
+  --mc-muted: #8e8e97;
+  --mc-border: #2a2a30;
+  --mc-accent: #a78bfa;
+}

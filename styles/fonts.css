@@ -1,0 +1,9 @@
+/* Uses locally installed copies when available, else falls back to system fonts.
+   To bundle fonts, put .woff2 files in fonts/ and add url() sources below. */
+@font-face { font-family: 'MC Inter';          src: local('Inter'), local('Inter Regular'); }
+@font-face { font-family: 'MC Poppins';        src: local('Poppins'), local('Poppins Regular'); }
+@font-face { font-family: 'MC JetBrains Mono'; src: local('JetBrains Mono'), local('JetBrainsMono-Regular'); }
+
+html[data-mc-font="inter"] body, html[data-mc-font="inter"] button, html[data-mc-font="inter"] input { font-family: 'MC Inter', system-ui, sans-serif !important; }
+html[data-mc-font="poppins"] body, html[data-mc-font="poppins"] button, html[data-mc-font="poppins"] input { font-family: 'MC Poppins', system-ui, sans-serif !important; }
+html[data-mc-font="jetbrains"] body, html[data-mc-font="jetbrains"] button, html[data-mc-font="jetbrains"] input { font-family: 'MC JetBrains Mono', ui-monospace, monospace !important; }

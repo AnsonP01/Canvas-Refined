@@ -1,0 +1,296 @@
+/* Dark mode: active when <html data-mc-dark>. Colors come from --mc-* vars in themes/*.css. */
+html[data-mc-dark] { color-scheme: dark; }
+
+html[data-mc-dark] body,
+html[data-mc-dark] #application,
+html[data-mc-dark] #wrapper,
+html[data-mc-dark] #main,
+html[data-mc-dark] #content-wrapper,
+html[data-mc-dark] #content,
+html[data-mc-dark] .ic-app-footer,
+html[data-mc-dark] .ic-Layout-contentMain,
+html[data-mc-dark] .ic-Layout-wrapper,
+html[data-mc-dark] #left-side,
+html[data-mc-dark] #right-side-wrapper,
+html[data-mc-dark] #right-side,
+html[data-mc-dark] .ic-Dashboard-header {
+  background: var(--mc-bg) !important;
+  color: var(--mc-text) !important;
+}
+
+html[data-mc-dark] .ic-app-header,
+html[data-mc-dark] .ic-app-nav-toggle-and-crumbs,
+html[data-mc-dark] .ic-DashboardCard,
+html[data-mc-dark] .ic-DashboardCard__box,
+html[data-mc-dark] .Button,
+html[data-mc-dark] .ui-widget-content,
+html[data-mc-dark] .ic-item-row,
+html[data-mc-dark] .ig-row,
+html[data-mc-dark] .context_module,
+html[data-mc-dark] .ic-Table,
+html[data-mc-dark] table,
+html[data-mc-dark] .Sidebar__Section,
+html[data-mc-dark] .dropdown-menu,
+html[data-mc-dark] .ui-dialog,
+html[data-mc-dark] .ui-menu {
+  background: var(--mc-surface) !important;
+  color: var(--mc-text) !important;
+  border-color: var(--mc-border) !important;
+}
+
+html[data-mc-dark] input,
+html[data-mc-dark] select,
+html[data-mc-dark] textarea,
+html[data-mc-dark] .ic-Input {
+  background: var(--mc-surface-2) !important;
+  color: var(--mc-text) !important;
+  border-color: var(--mc-border) !important;
+}
+
+html[data-mc-dark] h1, html[data-mc-dark] h2, html[data-mc-dark] h3,
+html[data-mc-dark] h4, html[data-mc-dark] h5, html[data-mc-dark] h6,
+html[data-mc-dark] p, html[data-mc-dark] li, html[data-mc-dark] td,
+html[data-mc-dark] th, html[data-mc-dark] label { color: var(--mc-text); }
+
+html[data-mc-dark] a { color: var(--mc-accent); }
+html[data-mc-dark] hr { border-color: var(--mc-border) !important; }
+html[data-mc-dark] .ic-DashboardCard__header-subtitle,
+html[data-mc-dark] .ic-DashboardCard__header-term { color: var(--mc-muted) !important; }
+html[data-mc-dark] img { filter: brightness(.9); }
+
+/* ---- Theme coverage: page header, tabs, card bodies, Coming Up ---- */
+html[data-mc-dark] .ic-Dashboard-header,
+html[data-mc-dark] .ic-Dashboard-header__layout,
+html[data-mc-dark] .ic-Dashboard-header__title,
+html[data-mc-dark] .ic-Dashboard-header__actions,
+html[data-mc-dark] .ic-Layout-contentWrapper,
+html[data-mc-dark] #dashboard,
+html[data-mc-dark] #dashboard_header_container,
+html[data-mc-dark] #dashboard-activity,
+html[data-mc-dark] #DashboardCard_Container,
+html[data-mc-dark] .ic-DashboardCard__box__container,
+html[data-mc-dark] .ui-tabs,
+html[data-mc-dark] .ui-tabs-panel,
+html[data-mc-dark] .ui-tabs-nav,
+html[data-mc-dark] .ui-widget-header,
+html[data-mc-dark] .ui-tabs .ui-tabs-nav li,
+html[data-mc-dark] .ui-tabs .ui-tabs-nav li a {
+  background: var(--mc-bg) !important;
+  background-image: none !important;
+  color: var(--mc-text) !important;
+  border-color: var(--mc-border) !important;
+}
+html[data-mc-dark] .ic-Dashboard-header h1,
+html[data-mc-dark] .ic-Dashboard-header h2,
+html[data-mc-dark] .ic-Dashboard-header__title,
+html[data-mc-dark] .ic-Dashboard-header__title * { color: var(--mc-text) !important; }
+html[data-mc-dark] .ic-Dashboard-header button,
+html[data-mc-dark] .ic-Dashboard-header .Button,
+html[data-mc-dark] .ic-Dashboard-header svg,
+html[data-mc-dark] .ic-Dashboard-header i { background: transparent !important; color: var(--mc-text) !important; fill: currentColor; }
+
+/* Active tab */
+html[data-mc-dark] .ui-tabs .ui-tabs-nav li.ui-tabs-active,
+html[data-mc-dark] .ui-tabs .ui-tabs-nav li.ui-tabs-active a,
+html[data-mc-dark] .ui-tabs .ui-tabs-nav li.ui-state-active,
+html[data-mc-dark] .ui-tabs .ui-tabs-nav li.ui-state-active a {
+  background: var(--mc-surface-2) !important;
+  color: var(--mc-text) !important;
+}
+html[data-mc-dark] .ui-tabs .ui-tabs-nav li a { color: var(--mc-accent) !important; }
+html[data-mc-dark] .ui-tabs .ui-tabs-nav li.ui-tabs-active a,
+html[data-mc-dark] .ui-tabs .ui-tabs-nav li.ui-state-active a { color: var(--mc-text) !important; }
+html[data-mc-dark] .ui-tabs .ui-tabs-nav { border-color: var(--mc-border) !important; }
+
+/* Dashboard card bodies (the white title/term area and the action row) */
+html[data-mc-dark] .ic-DashboardCard__header,
+html[data-mc-dark] .ic-DashboardCard__header_content,
+html[data-mc-dark] .ic-DashboardCard__header-content,
+html[data-mc-dark] .ic-DashboardCard__header-button-bg,
+html[data-mc-dark] .ic-DashboardCard__action-container,
+html[data-mc-dark] .ic-DashboardCard__action-layout,
+html[data-mc-dark] .ic-DashboardCard__link {
+  background: var(--mc-surface) !important;
+  background-image: none !important;
+  color: var(--mc-text) !important;
+  border-color: var(--mc-border) !important;
+}
+html[data-mc-dark] .ic-DashboardCard__header-title,
+html[data-mc-dark] .ic-DashboardCard__header-title span,
+html[data-mc-dark] .ic-DashboardCard__header-title a,
+html[data-mc-dark] .ic-DashboardCard__link,
+html[data-mc-dark] .ic-DashboardCard__link * { color: var(--mc-text) !important; }
+html[data-mc-dark] .ic-DashboardCard__header-subtitle,
+html[data-mc-dark] .ic-DashboardCard__header-term,
+html[data-mc-dark] .ic-DashboardCard__header-subtitle *,
+html[data-mc-dark] .ic-DashboardCard__header-term * { color: var(--mc-muted) !important; }
+html[data-mc-dark] .ic-DashboardCard__action-container a,
+html[data-mc-dark] .ic-DashboardCard__action-container svg,
+html[data-mc-dark] .ic-DashboardCard__action-container i { color: var(--mc-accent) !important; fill: currentColor; background: transparent !important; }
+
+/* Coming Up / To Do / sidebar sections */
+html[data-mc-dark] .coming_up,
+html[data-mc-dark] .coming_up *,
+html[data-mc-dark] .events_list,
+html[data-mc-dark] .events_list li,
+html[data-mc-dark] .event-details,
+html[data-mc-dark] .Sidebar__Section *,
+html[data-mc-dark] #right-side .rs-margin-lr,
+html[data-mc-dark] #right-side .rs-margin-all,
+html[data-mc-dark] #right-side .right-side-list,
+html[data-mc-dark] #right-side .right-side-list li,
+html[data-mc-dark] #right-side .right-side-list li a,
+html[data-mc-dark] #right-side .h2,
+html[data-mc-dark] #right-side h2,
+html[data-mc-dark] .right-side-list .event-details {
+  background-color: transparent !important;
+  background-image: none !important;
+  color: var(--mc-text) !important;
+  border-color: var(--mc-border) !important;
+}
+html[data-mc-dark] .coming_up .event-details__subtitle,
+html[data-mc-dark] .events_list .event-details__subtitle,
+html[data-mc-dark] .coming_up .event-details__context,
+html[data-mc-dark] .coming_up .event-details__timestamp,
+html[data-mc-dark] .coming_up .event-details__time { color: var(--mc-muted) !important; }
+html[data-mc-dark] #right-side a { color: var(--mc-accent) !important; }
+html[data-mc-dark] .coming_up .Button--link,
+html[data-mc-dark] .Sidebar__Section .Button,
+html[data-mc-dark] #right-side .Button {
+  background: var(--mc-surface-2) !important;
+  color: var(--mc-text) !important;
+}
+
+/* ---- Nav logo + active Dashboard item ---- */
+html[data-mc-dark] .ic-app-header__logomark-container,
+html[data-mc-dark] .ic-app-header__logomark,
+html[data-mc-dark] .ic-app-header__logo-link,
+html[data-mc-dark] a.ic-app-header__logomark-container {
+  background-color: var(--mc-surface-2) !important;
+}
+html[data-mc-dark] .ic-app-header__main-navigation,
+html[data-mc-dark] .ic-app-header__menu-list,
+html[data-mc-dark] .ic-app-header__menu-list-item,
+html[data-mc-dark] .ic-app-header__bottom-container {
+  background: var(--mc-bg) !important;
+}
+html[data-mc-dark] .ic-app-header__menu-list-item a,
+html[data-mc-dark] .ic-app-header__menu-list-item button,
+html[data-mc-dark] .ic-app-header__menu-list-item .menu-item__text,
+html[data-mc-dark] .ic-app-header__menu-list-item svg {
+  background: transparent !important;
+  color: var(--mc-text) !important;
+  fill: currentColor;
+}
+html[data-mc-dark] .ic-app-header__menu-list-item--active,
+html[data-mc-dark] .ic-app-header__menu-list-item--active a,
+html[data-mc-dark] .ic-app-header__menu-list-item.ic-app-header__menu-list-item--active {
+  background: var(--mc-surface-2) !important;
+}
+html[data-mc-dark] .ic-app-header__menu-list-item--active a,
+html[data-mc-dark] .ic-app-header__menu-list-item--active .menu-item__text,
+html[data-mc-dark] .ic-app-header__menu-list-item--active svg { color: var(--mc-accent) !important; }
+html[data-mc-dark] .ic-app-header__menu-list-item:hover { background: var(--mc-surface) !important; }
+
+/* ---- White bar on right of Coming Up / Recent Feedback items ---- */
+html[data-mc-dark] #right-side .events_list .event-list-item,
+html[data-mc-dark] #right-side .events_list li,
+html[data-mc-dark] #right-side .events_list li > *,
+html[data-mc-dark] #right-side .recent_feedback li,
+html[data-mc-dark] #right-side .recent_feedback li > *,
+html[data-mc-dark] #right-side .event-details,
+html[data-mc-dark] #right-side .event-details > *,
+html[data-mc-dark] #right-side .event-details::before,
+html[data-mc-dark] #right-side .event-details::after,
+html[data-mc-dark] #right-side .events_list li::before,
+html[data-mc-dark] #right-side .events_list li::after,
+html[data-mc-dark] #right-side .event-list-item::before,
+html[data-mc-dark] #right-side .event-list-item::after,
+html[data-mc-dark] #right-side .recent_feedback li::before,
+html[data-mc-dark] #right-side .recent_feedback li::after {
+  border-right-color: transparent !important;
+  border-left-color: transparent !important;
+  box-shadow: none !important;
+  outline: 0 !important;
+  background-color: transparent !important;
+  background-image: none !important;
+}
+html[data-mc-dark] #right-side * { scrollbar-color: var(--mc-border) transparent; }
+
+/* ---- Fixes: keep the logo image, only recolor its background ---- */
+html[data-mc-dark] .ic-app-header__logomark-container,
+html[data-mc-dark] .ic-app-header__logomark,
+html[data-mc-dark] .ic-app-header__logo-link,
+html[data-mc-dark] a.ic-app-header__logomark-container {
+  background-color: var(--mc-surface-2) !important;
+}
+html[data-mc-dark] .ic-app-header__logomark-container { background-color: var(--mc-surface-2) !important; }
+
+/* ---- Nav: "Dashboard" (active) and all links ---- */
+html[data-mc-dark] .ic-app-header__menu-list-link,
+html[data-mc-dark] .ic-app-header__menu-list-link:link,
+html[data-mc-dark] .ic-app-header__menu-list-link:visited,
+html[data-mc-dark] .ic-app-header__menu-list-item .ic-app-header__menu-list-link {
+  background: transparent !important;
+  color: var(--mc-text) !important;
+}
+html[data-mc-dark] .ic-app-header__menu-list-item--active,
+html[data-mc-dark] .ic-app-header__menu-list-item--active .ic-app-header__menu-list-link,
+html[data-mc-dark] .ic-app-header__menu-list-item.ic-app-header__menu-list-item--active .ic-app-header__menu-list-link {
+  background: var(--mc-surface-2) !important;
+  background-color: var(--mc-surface-2) !important;
+  color: var(--mc-accent) !important;
+}
+html[data-mc-dark] .ic-app-header__menu-list-item--active .menu-item__text,
+html[data-mc-dark] .ic-app-header__menu-list-item--active .ic-icon-svg,
+html[data-mc-dark] .ic-app-header__menu-list-item--active svg { color: var(--mc-accent) !important; fill: var(--mc-accent) !important; }
+html[data-mc-dark] .ic-app-header__menu-list-link:hover,
+html[data-mc-dark] .ic-app-header__menu-list-link:focus { background: var(--mc-surface) !important; }
+
+/* ---- Final: nav column + logo all share one theme colour ---- */
+html[data-mc-dark] .ic-app-header,
+html[data-mc-dark] .ic-app-header__main-navigation,
+html[data-mc-dark] .ic-app-header__logomark-container,
+html[data-mc-dark] .ic-app-header__logomark,
+html[data-mc-dark] .ic-app-header__logo-link,
+html[data-mc-dark] a.ic-app-header__logomark-container,
+html[data-mc-dark] .ic-app-header__menu-list,
+html[data-mc-dark] .ic-app-header__bottom-container,
+html[data-mc-dark] .ic-app-header__secondary-navigation {
+  background-color: var(--mc-bg) !important;
+  box-shadow: none !important;
+  border-color: var(--mc-border) !important;
+}
+html[data-mc-dark] .ic-app-header__menu-list-item:not(.ic-app-header__menu-list-item--active) {
+  background-color: var(--mc-bg) !important;
+}
+
+/* ---- Sidebar link cards (Request Course Spaces / Manage Courses / View Grades) ---- */
+html[data-mc-dark][data-mc-dark] #right-side .Button,
+html[data-mc-dark][data-mc-dark] #right-side .btn,
+html[data-mc-dark][data-mc-dark] #right-side .button-sidebar-wide,
+html[data-mc-dark][data-mc-dark] #right-side [class*="button" i]:not(ul):not(li),
+html[data-mc-dark][data-mc-dark] #right-side [class*="btn" i]:not(ul):not(li),
+html[data-mc-dark][data-mc-dark] #right-side a[role="button"],
+html[data-mc-dark][data-mc-dark] #right-side .Sidebar__Section a.Button,
+html[data-mc-dark][data-mc-dark] #right-side .rs-margin-lr > a,
+html[data-mc-dark][data-mc-dark] #right-side .rs-margin-all > a {
+  background: var(--mc-surface-2) !important;
+  background-image: none !important;
+  color: var(--mc-accent) !important;
+  border: 1px solid var(--mc-border) !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+html[data-mc-dark][data-mc-dark] #right-side .Button:hover,
+html[data-mc-dark][data-mc-dark] #right-side .btn:hover,
+html[data-mc-dark][data-mc-dark] #right-side .button-sidebar-wide:hover,
+html[data-mc-dark][data-mc-dark] #right-side .rs-margin-lr > a:hover {
+  background: var(--mc-surface) !important;
+}
+html[data-mc-dark][data-mc-dark] #right-side .Button *,
+html[data-mc-dark][data-mc-dark] #right-side .btn *,
+html[data-mc-dark][data-mc-dark] #right-side .button-sidebar-wide * {
+  background-color: transparent !important;
+  color: inherit !important;
+}

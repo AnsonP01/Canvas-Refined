@@ -403,28 +403,38 @@
       const open = view.filter((i) => !i.done && matches(i)).sort((a, b) => new Date(a.date) - new Date(b.date));
       const overdueCount = open.filter((i) => new Date(i.date) < now).length;
 
-      const list = h('ul', { class: 'todo' },
-        open.slice(0, expanded ? undefined : LIMIT).map((i) => {
-          const overdue = new Date(i.date) < now;
-          const li = h('li', {
-            class: overdue ? 'overdue' : '',
-            onmouseenter: () => showTip(i, li),
-            onmouseleave: hideTip
-          });
-          li.append(
-            h('button', {
-              class: 'check', type: 'button', title: 'Mark as done',
-              'aria-label': `Mark "${i.title}" as done`,
-              onclick: () => complete(i, li)
-            }),
-            h('div', { class: 'body' },
-              h('a', { href: safeHref(i.url) }, i.title),
-              h('div', { class: 'meta' }, h('span', null, i.course), h('b', null, (overdue ? 'Overdue · ' : '') + dueLabel(i.date)))));
-          return li;
-        }));
+      const isToday = (i) => new Date(i.date).toDateString() === new Date(now).toDateString();
+      const row = (i) => {
+        const overdue = new Date(i.date) < now;
+        const li = h('li', {
+          class: overdue ? 'overdue' : '',
+          onmouseenter: () => showTip(i, li),
+          onmouseleave: hideTip
+        });
+        li.append(
+          h('button', {
+            class: 'check', type: 'button', title: 'Mark as done',
+            'aria-label': `Mark "${i.title}" as done`,
+            onclick: () => complete(i, li)
+          }),
+          h('div', { class: 'body' },
+            h('a', { href: safeHref(i.url) }, i.title),
+            h('div', { class: 'meta' }, h('span', null, i.course), h('b', null, (overdue ? 'Overdue · ' : '') + dueLabel(i.date)))));
+        return li;
+      };
 
-      const more = h('button', { class: 'link', hidden: open.length <= LIMIT, onclick: () => { expanded = !expanded; paint(); } },
-        expanded ? 'Show less' : `Show ${open.length - LIMIT} more`);
+      // Items due today get their own section; everything else stays in the main list.
+      const todayItems = open.filter(isToday);
+      const rest = open.filter((i) => !isToday(i));
+      const list = h('ul', { class: 'todo' }, rest.slice(0, expanded ? undefined : LIMIT).map(row));
+      const todaySection = todayItems.length
+        ? h('div', { class: 'today' },
+            h('h4', null, 'Due today', h('span', { class: 'chip' }, String(todayItems.length))),
+            h('ul', { class: 'todo' }, todayItems.map(row)))
+        : null;
+
+      const more = h('button', { class: 'link', hidden: rest.length <= LIMIT, onclick: () => { expanded = !expanded; paint(); } },
+        expanded ? 'Show less' : `Show ${rest.length - LIMIT} more`);
 
       card.replaceChildren(
         h('div', { class: 'row' },
@@ -433,7 +443,8 @@
             h('h3', null, 'To-Do', gpa != null && h('span', { class: 'chip', title: `${settings.gpa.scale} scale` }, `GPA ${gpa.toFixed(2)}`)),
             h('p', { class: 'muted' }, `${done} of ${view.length} done · ${overdueCount} overdue`))),
         filterBar(),
-        open.length ? list : h('p', { class: 'muted' }, fCourse || fStatus !== 'all' ? 'Nothing matches this filter.' : 'Nothing due — nice work!'),
+        todaySection,
+        rest.length ? list : todayItems.length ? null : h('p', { class: 'muted' }, fCourse || fStatus !== 'all' ? 'Nothing matches this filter.' : 'Nothing due — nice work!'),
         more);
     }
 

@@ -1,0 +1,9 @@
+html[data-mc-theme="night"] {
+  --mc-bg: #15110d;
+  --mc-surface: #211a14;
+  --mc-surface-2: #2b2219;
+  --mc-text: #e9d9c3;
+  --mc-muted: #a8957a;
+  --mc-border: #3a2e22;
+  --mc-accent: #e8a25c;
+}
