@@ -54,7 +54,6 @@ ul.todo li.leaving { opacity: 0; transform: translateX(12px); }
 .body a { color: var(--text); text-decoration: none; font-weight: 550; display: block; overflow-wrap: anywhere; }
 .body a:hover { color: var(--accent); text-decoration: underline; }
 .meta { display: flex; justify-content: space-between; gap: 12px; margin-top: 4px; font-size: 12px; color: var(--muted); }
-li.overdue .meta b { color: var(--danger); }
 
 button.link { background: none; border: 0; color: var(--accent); cursor: pointer; padding: 6px 0 0; font: inherit; }
 button.link[hidden] { display: none; }
@@ -64,10 +63,8 @@ button.link[hidden] { display: none; }
 .calc input { width: 90px; }
 .result { font-weight: 600; margin-top: 8px; }
 
-.today { margin: 0 0 12px; padding: 8px 10px 2px; border: 1px solid var(--accent); border-radius: 10px; background: color-mix(in srgb, var(--accent) 10%, transparent); }
-.today h4 { margin: 0 0 2px; font-size: 13px; font-weight: 650; display: flex; align-items: center; gap: 8px; color: var(--accent); }
-.today { padding-bottom: 10px; }
-.today h4 { margin-bottom: 8px; }
+.today { margin: 0 0 12px; padding: 8px 10px 10px; border: 1px solid var(--accent); border-radius: 10px; background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.today h4 { margin: 0 0 8px; font-size: 13px; font-weight: 650; display: flex; align-items: center; gap: 8px; color: var(--accent); }
 /* Today's blocks sit in front of the tinted "Due today" box: solid panel colour + a slight lift */
 .today ul.todo li { background: var(--bg); box-shadow: 0 1px 3px rgba(0, 0, 0, .18); }
 

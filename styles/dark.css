@@ -54,8 +54,6 @@ html[data-mc-dark] th, html[data-mc-dark] label { color: var(--mc-text); }
 
 html[data-mc-dark] a { color: var(--mc-accent); }
 html[data-mc-dark] hr { border-color: var(--mc-border) !important; }
-html[data-mc-dark] .ic-DashboardCard__header-subtitle,
-html[data-mc-dark] .ic-DashboardCard__header-term { color: var(--mc-muted) !important; }
 html[data-mc-dark] img { filter: brightness(.9); }
 
 /* ---- Theme coverage: page header, tabs, card bodies, Coming Up ---- */
@@ -113,7 +111,18 @@ html[data-mc-dark] .ic-DashboardCard__link {
   background: var(--mc-surface) !important;
   background-image: none !important;
   color: var(--mc-text) !important;
-  border-color: var(--mc-border) !important;
+}
+/* No lines inside a card, like light mode: Canvas's card parts can carry borders that don't
+   show on white (transparent or white ones); recoloured for dark mode they'd draw a box around
+   the title area. :not(#mc-x)... outweighs the theme fixer's border fix. Keyboard focus
+   rings are untouched. */
+html[data-mc-dark] .ic-DashboardCard :is(.ic-DashboardCard__header, .ic-DashboardCard__header_content,
+  .ic-DashboardCard__header-content, .ic-DashboardCard__link, .ic-DashboardCard__header-title,
+  .ic-DashboardCard__header-subtitle, .ic-DashboardCard__header-term, .ic-DashboardCard__header_image,
+  .ic-DashboardCard__header_hero, .ic-DashboardCard__action-container,
+  .ic-DashboardCard__action-layout):not(:focus-visible):not(#mc-x):not(#mc-y) {
+  border-color: transparent !important;
+  box-shadow: none !important;
 }
 html[data-mc-dark] .ic-DashboardCard__header-title,
 html[data-mc-dark] .ic-DashboardCard__header-title span,
@@ -133,7 +142,7 @@ html[data-mc-dark] .coming_up,
 html[data-mc-dark] .coming_up *,
 html[data-mc-dark] .events_list,
 html[data-mc-dark] .events_list li,
-html[data-mc-dark] .event-details,
+html[data-mc-dark] .events_list .event-details,
 html[data-mc-dark] .Sidebar__Section *,
 html[data-mc-dark] #right-side .rs-margin-lr,
 html[data-mc-dark] #right-side .rs-margin-all,
@@ -154,6 +163,18 @@ html[data-mc-dark] .coming_up .event-details__context,
 html[data-mc-dark] .coming_up .event-details__timestamp,
 html[data-mc-dark] .coming_up .event-details__time { color: var(--mc-muted) !important; }
 html[data-mc-dark] #right-side a { color: var(--mc-accent) !important; }
+
+/* Calendar: the details popup that opens when you click an event (Canvas's Popover:
+   <div class="event-details carat-bottom">, also .popover / .fc-popover "+N more"). Solid
+   theme surface like light mode's white, never see-through; its arrow's inside matches it. */
+html[data-mc-dark] :is(.event-details.carat-bottom, .popover, .fc-popover) {
+  background-color: var(--mc-surface) !important;
+  background-image: none !important;
+  color: var(--mc-text) !important;
+  border-color: var(--mc-border) !important;
+  opacity: 1 !important;
+}
+html[data-mc-dark] .ui-menu-carat span { border-color: var(--mc-surface) transparent !important; }
 html[data-mc-dark] .coming_up .Button--link,
 html[data-mc-dark] .Sidebar__Section .Button,
 html[data-mc-dark] #right-side .Button {
@@ -161,13 +182,7 @@ html[data-mc-dark] #right-side .Button {
   color: var(--mc-text) !important;
 }
 
-/* ---- Nav logo + active Dashboard item ---- */
-html[data-mc-dark] .ic-app-header__logomark-container,
-html[data-mc-dark] .ic-app-header__logomark,
-html[data-mc-dark] .ic-app-header__logo-link,
-html[data-mc-dark] a.ic-app-header__logomark-container {
-  background-color: var(--mc-surface-2) !important;
-}
+/* ---- Nav column + active Dashboard item ---- */
 html[data-mc-dark] .ic-app-header__main-navigation,
 html[data-mc-dark] .ic-app-header__menu-list,
 html[data-mc-dark] .ic-app-header__menu-list-item,
@@ -217,15 +232,6 @@ html[data-mc-dark] #right-side .recent_feedback li::after {
 }
 html[data-mc-dark] #right-side * { scrollbar-color: var(--mc-border) transparent; }
 
-/* ---- Fixes: keep the logo image, only recolor its background ---- */
-html[data-mc-dark] .ic-app-header__logomark-container,
-html[data-mc-dark] .ic-app-header__logomark,
-html[data-mc-dark] .ic-app-header__logo-link,
-html[data-mc-dark] a.ic-app-header__logomark-container {
-  background-color: var(--mc-surface-2) !important;
-}
-html[data-mc-dark] .ic-app-header__logomark-container { background-color: var(--mc-surface-2) !important; }
-
 /* ---- Nav: "Dashboard" (active) and all links ---- */
 html[data-mc-dark] .ic-app-header__menu-list-link,
 html[data-mc-dark] .ic-app-header__menu-list-link:link,
@@ -247,7 +253,8 @@ html[data-mc-dark] .ic-app-header__menu-list-item--active svg { color: var(--mc-
 html[data-mc-dark] .ic-app-header__menu-list-link:hover,
 html[data-mc-dark] .ic-app-header__menu-list-link:focus { background: var(--mc-surface) !important; }
 
-/* ---- Final: nav column + logo all share one theme colour ---- */
+/* ---- Final: nav column + logo all share one theme colour (only the logo's background is
+   recoloured; the logo image itself is kept) ---- */
 html[data-mc-dark] .ic-app-header,
 html[data-mc-dark] .ic-app-header__main-navigation,
 html[data-mc-dark] .ic-app-header__logomark-container,
@@ -330,18 +337,15 @@ html[data-mc-dark] #content [data-cid~="CondensedButton"] {
   color: var(--mc-text) !important;
   border-color: var(--mc-border) !important;
 }
-html[data-mc-dark] #content [data-cid~="BaseButton"][class*="primary"] {
-  background-color: var(--mc-accent) !important;
-  color: #fff !important;
-}
 html[data-mc-dark] #content [data-cid~="BaseButton"] * { color: inherit !important; background-color: transparent !important; }
 
-/* Inputs, selects, search */
-html[data-mc-dark] #content input,
-html[data-mc-dark] #content [data-cid~="TextInput"],
-html[data-mc-dark] #content [class*="-textInput__facade"],
-html[data-mc-dark] #content [class*="-select__facade"],
-html[data-mc-dark] #content [class*="-textInput__layout"] {
+/* Inputs, selects, search: on the page and in dialogs (Compose/Reply, which InstUI renders
+   outside #content). :is() takes its most specific argument (#content): weight unchanged. */
+html[data-mc-dark] :is(#content, [role="dialog"]) input,
+html[data-mc-dark] :is(#content, [role="dialog"]) [data-cid~="TextInput"],
+html[data-mc-dark] :is(#content, [role="dialog"]) [class*="-textInput__facade"],
+html[data-mc-dark] :is(#content, [role="dialog"]) [class*="-select__facade"],
+html[data-mc-dark] :is(#content, [role="dialog"]) [class*="-textInput__layout"] {
   background-color: var(--mc-surface-2) !important;
   color: var(--mc-text) !important;
   border-color: var(--mc-border) !important;
@@ -357,8 +361,7 @@ html[data-mc-dark] #content [class*="-checkboxFacade__facade"] * { color: var(--
 html[data-mc-dark] #content [data-cid~="Text"][class*="-color-brand"],
 html[data-mc-dark] #content [class*="-color-brand"] { color: var(--mc-accent) !important; }
 
-/* Inbox page header and empty state */
-html[data-mc-dark] #content [data-cid~="Heading"] { color: var(--mc-text) !important; }
+/* Inbox empty-state icon */
 html[data-mc-dark] #content svg[name="IconMail"],
 html[data-mc-dark] #content [class*="-svgIcon"] { color: var(--mc-muted); fill: currentColor; }
 
@@ -383,6 +386,11 @@ html[data-mc-dark] [data-mc-borderfix]:not(#mc-x):not(#mc-y) {
 }
 html[data-mc-dark] [data-mc-textfix]:not(#mc-x):not(#mc-y) {
   color: var(--mc-text) !important;
+}
+/* No fades while the fixer measures an element or while a fix is on: a fade would show the
+   page's light colour for a moment, and would make the fixer measure a half-way colour. */
+html[data-mc-dark] :is([data-mc-measuring], [data-mc-lightfix], [data-mc-borderfix], [data-mc-textfix]) {
+  transition: none !important;
 }
 /* ...except course-coloured items (Calendar events etc., classes like group_course_123) and their
    contents. Those exclusions sit in :where() so they add no specificity. */

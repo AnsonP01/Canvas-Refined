@@ -18,6 +18,7 @@
    *  "Extension context invalidated". Check this first and quietly do nothing instead. */
   const extAlive = () => { try { return !!(chrome.runtime && chrome.runtime.id); } catch (_) { return false; } };
   const mq = matchMedia('(prefers-color-scheme: dark)');
+  const onDashboard = () => location.pathname === '/' || location.pathname === '/dashboard';
   let settings = MC.sanitize(null);
 
   /* ------------------------------------------------------------------ */
@@ -55,8 +56,7 @@
     // Our to-do panel only lives on the dashboard, so only there does it replace Canvas's
     // right sidebar (see dashboard.css). Elsewhere that sidebar holds real page content,
     // e.g. the grade total and options on a class's Grades page, so it must stay.
-    const onDash = location.pathname === '/' || location.pathname === '/dashboard';
-    flag('data-mc-todo', settings.todo.enabled && onDash);
+    flag('data-mc-todo', settings.todo.enabled && onDashboard());
     if (d.font === 'default') root.removeAttribute('data-mc-font');
     else root.setAttribute('data-mc-font', d.font);
 
@@ -107,17 +107,25 @@
     };
     if (document.head) scan(document.head);
     if (bundleObs) return;
-    // Only <html>'s and <head>'s direct children are watched (that's where Canvas puts its CSS).
+    // Only <html>'s and <head>'s direct children are watched (that's where Canvas puts its CSS),
+    // plus <body>'s on the Calendar, whose class-colour <style> may be put there.
+    const watchBody = (b) => {
+      if (!ON_CALENDAR) return;
+      for (const s of b.children) if (s.nodeName === 'STYLE') noteContextStyle(s);
+      bundleObs.observe(b, { childList: true });
+    };
     bundleObs = new MutationObserver((recs) => {
       for (const r of recs) for (const n of r.addedNodes) {
         if (n.nodeName === 'LINK') noteBundleLink(n);
         else if (n.nodeName === 'STYLE') noteContextStyle(n);
         else if (n.nodeName === 'HEAD') { scan(n); bundleObs.observe(n, { childList: true }); }
+        else if (n.nodeName === 'BODY') watchBody(n);
       }
       keepContextStyleLast();
     });
     bundleObs.observe(root, { childList: true });
     if (document.head) bundleObs.observe(document.head, { childList: true });
+    if (document.body) watchBody(document.body);
   }
 
   /* Theme fixer. Canvas pages (Inbox, Courses/Groups/Calendar trays, Calendar,
@@ -128,11 +136,18 @@
    *   data-mc-lightfix="t"  light tinted box (highlight)    -> accent-tinted surface
    *   data-mc-textfix       text/icon too dark to read on its background -> theme text
    * Changed parts are re-checked inside the MutationObserver callback, which runs
-   * before the browser paints, so nothing flashes. */
+   * before the browser paints, so nothing flashes. Things that change colour without a DOM
+   * change (CSS transitions/animations, e.g. InstUI buttons fading their background in) are
+   * re-checked when the transition ends, and an idle page-wide scan catches the rest. */
   const LF = 'data-mc-lightfix', TF = 'data-mc-textfix', BF = 'data-mc-borderfix';
+  // While an element is measured (and while it carries a fix) its transitions are off (dark.css):
+  // otherwise taking a fix off to measure would start a fade, and the first frame of that fade
+  // (still the fixed colour) would be measured instead of the element's real colour.
+  const MEAS = 'data-mc-measuring';
   const FIX_EVENTS = ['mouseover', 'mouseout', 'click', 'focusin'];
   const SKIP = new Set(['IMG', 'VIDEO', 'CANVAS', 'IFRAME', 'PICTURE', 'SOURCE', 'SCRIPT', 'STYLE', 'LINK', 'META', 'NOSCRIPT', 'TEMPLATE', 'BR']);
-  const MAX_FULL_SCAN = 12000; // huge pages (e.g. gradebook): rely on the per-change checks only
+  const MAX_SYNC_SCAN = 12000; // bigger pages are scanned in idle slices only, never in one block
+  const SLICE_MS = 8;          // idle scan: work at most this long before yielding to the page
   let fixObs = null, fixTimer = 0, accRgb = null;
   const fixActive = () => root.hasAttribute('data-mc-dark');
   const rgbOf = (c) => {
@@ -152,9 +167,11 @@
   }
   const isAccent = (c) => accRgb && Math.abs(accRgb[0] - c[0]) + Math.abs(accRgb[1] - c[1]) + Math.abs(accRgb[2] - c[2]) < 12;
 
+  const TRANSPARENT = 'rgba(0, 0, 0, 0)';
   /** 'n' or 't' if the element paints a light background that doesn't belong in dark mode. */
-  function lightKind(el, cs) {
-    const c = rgbOf(cs.backgroundColor);
+  function lightKind(el, bgColor) {
+    if (bgColor === TRANSPARENT) return ''; // most elements: no need to parse anything
+    const c = rgbOf(bgColor);
     if (!c || c[3] < 0.5 || relLum(c) < 0.45 || isAccent(c)) return '';
     // A coloured background set inline that isn't pale is a course colour (dashboard cards,
     // calendar events, swatches): keep it. Pale inline tints are Canvas UI states, e.g. the
@@ -168,6 +185,8 @@
   /** True if any visible border side is a light grey/pastel (glows on a dark page). */
   const SIDES = ['Top', 'Right', 'Bottom', 'Left'];
   function lightBorder(cs) {
+    // Fast exits for the common cases (one read each instead of twelve).
+    if (cs.borderStyle === 'none' || cs.borderWidth === '0px') return false;
     for (const side of SIDES) {
       if (!(parseFloat(cs['border' + side + 'Width']) > 0)) continue;
       const st = cs['border' + side + 'Style'];
@@ -206,56 +225,93 @@
   // page-wide backstop scan (re-measuring them means un-marking, which costs a restyle).
   const markedSig = new WeakMap();
   const sigOf = (el) => (el.getAttribute('class') || '') + '|' + (el.getAttribute('style') || '');
+  /** The background the element is heading to: if it's mid-fade (InstUI buttons fade theirs in
+   *  as they appear), judge the colour it will end on, not the half-way one. */
+  function endBackground(el, cs) {
+    if (cs.transitionDuration === '0s' || typeof el.getAnimations !== 'function') return cs.backgroundColor;
+    for (const a of el.getAnimations()) {
+      if (a.transitionProperty !== 'background-color' || !a.effect) continue;
+      const k = a.effect.getKeyframes(), end = k[k.length - 1];
+      if (end && end.backgroundColor) return end.backgroundColor;
+    }
+    return cs.backgroundColor;
+  }
   function checkEl(el, memo, reuse = false) {
     if (SKIP.has(el.tagName) || (el instanceof SVGElement && el.tagName !== 'svg')) return;
     const wasMarked = el.hasAttribute(LF) || el.hasAttribute(TF) || el.hasAttribute(BF);
     if (reuse && wasMarked && markedSig.get(el) === sigOf(el)) return;
-    if (el.hasAttribute(LF)) el.removeAttribute(LF);
-    if (el.hasAttribute(TF)) el.removeAttribute(TF);
-    if (el.hasAttribute(BF)) el.removeAttribute(BF);
+    if (wasMarked) { el.setAttribute(MEAS, ''); el.removeAttribute(LF); el.removeAttribute(TF); el.removeAttribute(BF); }
     memo.delete(el);
+    // Read everything first: `cs` is live, and our marks below change what it reports.
     const cs = getComputedStyle(el);
     // A course-coloured element (Calendar events, its class-list colour squares, ...) paints
     // its background/border in the course colour on purpose: never theme those away.
     const courseColored = CTX_CLASS.test(el.getAttribute('class') || '');
-    const kind = courseColored ? '' : lightKind(el, cs);
-    if (kind) { el.setAttribute(LF, kind); markedSig.set(el, sigOf(el)); }
-    if (!courseColored && lightBorder(cs)) { el.setAttribute(BF, ''); markedSig.set(el, sigOf(el)); }
-    if (!hasOwnText(el)) return;
-    const fg = rgbOf(cs.color);
-    if (!fg || fg[3] < 0.3) return;
-    const bg = bgBehind(el, memo);
-    if (bg === 'unknown') return;
-    // On a dark (themed) background, text under 3:1 contrast is hard to read: use the theme text.
-    const bad = bg === 'dark' ? relLum(fg) < 0.12 : relLum(bg) < 0.2 && contrast(fg, bg) < 3;
-    if (bad) { el.setAttribute(TF, ''); markedSig.set(el, sigOf(el)); }
+    const kind = courseColored ? '' : lightKind(el, endBackground(el, cs));
+    const border = !courseColored && lightBorder(cs);
+    // A light-fixed box gets the theme text colour from dark.css, so its own text is fine.
+    const fg = !kind && hasOwnText(el) ? rgbOf(cs.color) : null;
+    let badText = false;
+    if (fg && fg[3] >= 0.3) {
+      const bg = bgBehind(el, memo);
+      // On a dark (themed) background, text under 3:1 contrast is hard to read: use the theme text.
+      if (bg !== 'unknown') badText = bg === 'dark' ? relLum(fg) < 0.12 : relLum(bg) < 0.2 && contrast(fg, bg) < 3;
+    }
+    if (kind) el.setAttribute(LF, kind);
+    if (border) el.setAttribute(BF, '');
+    if (badText) el.setAttribute(TF, '');
+    if (kind || border || badText) markedSig.set(el, sigOf(el));
+    if (wasMarked) el.removeAttribute(MEAS);
   }
   function checkTree(el, memo = new Map(), reuse = false) {
     checkEl(el, memo, reuse);
     for (const k of el.querySelectorAll('*')) checkEl(k, memo, reuse);
   }
-  let fixThorough = false;
-  function fullScan() {
+
+  // Page-wide backstop scan. Small pages are scanned in one go when dark mode starts (so the
+  // first paint is right); after that, and on big pages, it runs in short idle slices so it
+  // never holds up typing or scrolling (SpeedGrader, Gradebook, long Inbox lists).
+  let fixThorough = false, scanList = null, scanPos = 0, scanReuse = true, scanAgain = false, scanCost = 0;
+  const idle = (fn) => (typeof requestIdleCallback === 'function' ? requestIdleCallback(fn, { timeout: 1000 }) : setTimeout(fn, 16));
+  function fullScan(sync = false) {
     fixTimer = 0;
-    if (!fixActive() || !document.body || document.hidden) return; // hidden tab: caught up on return
-    if (document.body.getElementsByTagName('*').length > MAX_FULL_SCAN) return;
-    const reuse = !fixThorough;
+    if (!fixActive() || !document.body || document.hidden) { scanList = null; return; } // hidden tab: caught up on return
+    if (scanList) { scanAgain = true; return; } // one already running: go again when it's done
+    scanReuse = !fixThorough;
     fixThorough = false;
+    scanCost = 0;
     readAccent();
-    checkTree(document.body, new Map(), reuse);
-    if (fixObs) fixObs.takeRecords(); // drop records caused by our own marking
+    scanList = [document.body, ...document.body.getElementsByTagName('*')]; // fixed snapshot to work through
+    scanPos = 0;
+    scanSlice(sync && scanList.length <= MAX_SYNC_SCAN ? Infinity : SLICE_MS);
   }
-  // The page-wide backstop costs ~50 ms on a big page, so it runs at most every 1.5 s and
-  // only when the browser is idle; the per-change checks above handle clicks instantly.
-  const queueFullScan = (thorough = false) => {
+  function scanSlice(budget = SLICE_MS) {
+    if (!scanList) return;
+    if (!fixActive() || document.hidden) { scanList = null; return; }
+    const t0 = performance.now(), end = t0 + budget, memo = new Map();
+    while (scanPos < scanList.length) {
+      const el = scanList[scanPos++];
+      if (el.isConnected) checkEl(el, memo, scanReuse);
+      if ((scanPos & 31) === 0 && performance.now() > end) break; // check the clock every 32 elements
+    }
+    if (fixObs) fixObs.takeRecords(); // drop records caused by our own marking
+    scanCost += performance.now() - t0;
+    if (scanPos < scanList.length) {
+      const list = scanList; // a later scan replacing this one must not get a second chain of slices
+      idle(() => { if (scanList === list) scanSlice(); });
+      return;
+    }
+    scanList = null;
+    if (scanAgain) { scanAgain = false; queueFullScan(); }
+  }
+  // Backstop for things restyled indirectly (siblings, late stylesheets). At most every 1.5 s,
+  // and less often on pages where a scan is expensive (keeps idle CPU use to a few percent).
+  const queueFullScan = (thorough = false, delay = Math.min(10000, Math.max(1500, scanCost * 20))) => {
     if (thorough) fixThorough = true;
     if (fixTimer) return;
-    fixTimer = setTimeout(() => {
-      if (typeof requestIdleCallback === 'function') requestIdleCallback(fullScan, { timeout: 3000 });
-      else fullScan();
-    }, 1500);
+    fixTimer = setTimeout(() => idle(() => fullScan()), delay);
   };
-  const BIG_SUBTREE = 4000; // bigger changes are left to the idle scan instead of blocking
+  const BIG_SUBTREE = 4000; // bigger changes are left to the (sliced) scan instead of blocking
   function onMutations(records) {
     if (!fixActive()) return;
     if (document.hidden) { queueFullScan(true); return; } // nobody's looking: no work now
@@ -265,16 +321,17 @@
       else for (const n of m.addedNodes) if (n instanceof Element) roots.add(n);
     }
     const memo = new Map();
+    let big = false;
     for (const el of roots) {
       if (!el.isConnected) continue;
       let covered = false;
       for (let p = el.parentElement; p; p = p.parentElement) if (roots.has(p)) { covered = true; break; }
       if (covered) continue;
-      if (el.getElementsByTagName('*').length > BIG_SUBTREE) { fixThorough = true; continue; }
+      if (el.getElementsByTagName('*').length > BIG_SUBTREE) { big = true; continue; }
       checkTree(el, memo);
     }
     if (fixObs) fixObs.takeRecords();
-    queueFullScan(); // backstop for things restyled indirectly (siblings, late stylesheets)
+    if (big) queueFullScan(true, 0); else queueFullScan();
   }
   const onPointer = (e) => {
     if (!fixActive()) return;
@@ -283,12 +340,24 @@
     for (const el of path) checkEl(el, memo); // outermost first, so text is judged on the fixed background
     if (fixObs) fixObs.takeRecords();
   };
+  // A transition/animation finished: the element now shows its real colours (no DOM change
+  // tells us that), e.g. an InstUI button whose background faded in after it appeared.
+  const COLOR_PROP = /color|background|border/;
+  const onAnimEnd = (e) => {
+    const el = e.target;
+    if (!fixActive() || !(el instanceof Element) || (e.type === 'transitionend' && !COLOR_PROP.test(e.propertyName))) return;
+    if (el.getElementsByTagName('*').length > 300) checkEl(el, new Map()); else checkTree(el);
+    if (fixObs) fixObs.takeRecords();
+  };
+  const ANIM_EVENTS = ['transitionend', 'animationend'];
   function themeFix() {
     if (!fixActive()) {
       if (fixObs) {
         fixObs.disconnect(); fixObs = null;
         for (const ev of FIX_EVENTS) document.removeEventListener(ev, onPointer, true);
+        for (const ev of ANIM_EVENTS) document.removeEventListener(ev, onAnimEnd, true);
       }
+      scanList = null;
       for (const el of document.querySelectorAll(`[${LF}],[${TF}],[${BF}]`)) { el.removeAttribute(LF); el.removeAttribute(TF); el.removeAttribute(BF); }
       return;
     }
@@ -298,28 +367,88 @@
       fixObs.observe(document.body, { subtree: true, childList: true, attributes: true,
         attributeFilter: ['class', 'style', 'aria-selected', 'aria-current', 'aria-checked', 'aria-expanded', 'open'] });
       for (const ev of FIX_EVENTS) document.addEventListener(ev, onPointer, true);
+      for (const ev of ANIM_EVENTS) document.addEventListener(ev, onAnimEnd, true);
     }
-    fullScan();
+    fullScan(true);
   }
 
-  /* Course colours (Calendar). Canvas colours each class's events, agenda items and class-list
-   * squares with a <style> it adds at runtime:
+  /* Class colours (Calendar). Canvas marks each class's events, agenda items and class-list
+   * squares with a class (group_course_123; groups/users: group_group_4, group_user_5) and
+   * colours them with a <style> it adds at runtime:
    *   .group_course_123, .group_course_123:hover, .group_course_123:focus { color: X; border-color: X; background-color: X }
-   * It beats the calendar's defaults (.fc-event { color: #fff; border-color: #3a87ad }) only by
-   * coming later at the same specificity. Our dark copies of those defaults carry the
-   * html[data-mc-dark] prefix (more specific), so they would win and every event would lose its
-   * colour. So in dark mode, copy Canvas's runtime rules with the same prefix, placed after our
-   * stylesheets: Canvas's own cascade again. Text colours too dark to read on the theme surface
-   * are lightened (same hue); backgrounds and borders keep the exact course colour. */
+   * That rule beats the calendar's defaults (.fc-event { color: #fff; border-color: #3a87ad })
+   * only by coming later at the same specificity, so in dark mode (where our copies of those
+   * defaults carry the html[data-mc-dark] prefix) it loses. We write our own rules, placed
+   * after every stylesheet, from one colour per class:
+   *   - the to-do panel's colour (it can differ from Canvas's: the panel re-assigns a colour
+   *     too close to another class's), saved by the panel in COLOR_KEY;
+   *   - else the colour in Canvas's runtime <style> on this page;
+   *   - else the user's Canvas colours (the same API Canvas's calendar reads), CTX_COLOR_KEY.
+   * Light mode: only the to-do colours are needed (Canvas's own rule does the rest).
+   * Dark mode: events look like the to-do panel's items: a solid bar in the class colour on
+   * the left, a background tinted with it, theme text with the icon in the class colour
+   * (lightened just enough to read). Class-list squares keep the exact colour. */
+  const COLOR_KEY = 'mc-course-colors';      // to-do panel: { "123": "#rrggbb" } (course ids)
+  const CTX_COLOR_KEY = 'mc-context-colors'; // Canvas:      { "course_123": "#rrggbb", "group_4": ... }
+  const CTX_CODE = /^[a-z]+(?:_[a-z]+)*_\d+$/;
+  const HEX6 = /^#[\da-f]{6}$/i;
+  const ON_CALENDAR = /^\/calendar/.test(location.pathname);
   const CTX_SEL = /\.group_[a-z]+(?:_[a-z]+)*_\d+(?![\w-])/;            // in a selector
   const CTX_CLASS = /(?:^|\s)group_[a-z]+(?:_[a-z]+)*_\d+(?=\s|$)/;   // in a class attribute
   const ctxSources = new Set();
-  let ctxStyle = null, ctxSig = '';
+  let ctxStyle = null, ctxSig = '', ctxWatch = null;
+  /** A <style> on the page: is it Canvas's class-colour one? Calendar styles are also watched
+   *  for later changes (Canvas may add one empty and fill it in, or rewrite it). */
   function noteContextStyle(el) {
-    if (el === ctxStyle || ctxSources.has(el) || !CTX_SEL.test(el.textContent || '')) return;
+    if (el === ctxStyle) return;
+    if (ON_CALENDAR) {
+      if (!ctxWatch) ctxWatch = new MutationObserver((recs) => {
+        let any = false;
+        for (const r of recs) {
+          const s = r.target.nodeType === 3 ? r.target.parentNode : r.target; // text change -> its <style>
+          if (s && s.nodeName === 'STYLE' && CTX_SEL.test(s.textContent || '')) { ctxSources.add(s); any = true; }
+        }
+        if (any) mirrorContextColors();
+      });
+      ctxWatch.observe(el, { childList: true, characterData: true, subtree: true });
+    }
+    if (ctxSources.has(el) || !CTX_SEL.test(el.textContent || '')) return;
     ctxSources.add(el);
     mirrorContextColors();
   }
+  function readMap(key) {
+    try {
+      const o = JSON.parse(localStorage.getItem(key));
+      return o && typeof o === 'object' ? o : {};
+    } catch (_) { return {}; }
+  }
+  /** Store a map; true if it changed. */
+  function writeMap(key, o) {
+    const s = JSON.stringify(o);
+    try {
+      if (localStorage.getItem(key) === s) return false;
+      localStorage.setItem(key, s);
+    } catch (_) { return false; }
+    return true;
+  }
+  const toHex6 = (c) => {
+    if (typeof c !== 'string' || !/^#(?:[\da-f]{3,4}|[\da-f]{6}|[\da-f]{8})$/i.test(c)) return null;
+    return '#' + hexToRgb(c).map((v) => v.toString(16).padStart(2, '0')).join('');
+  };
+  /** Called by the to-do panel with its class -> colour map; redraws the rules if it changed. */
+  function saveCourseColors(map) {
+    const o = {};
+    for (const [id, c] of map) { const x = toHex6(c); if (/^\d+$/.test(id) && x) o[id] = x; }
+    if (writeMap(COLOR_KEY, o)) mirrorContextColors();
+  }
+  /** The user's Canvas colours ({ course_123: '#hex', ... } from /users/self/colors). */
+  function saveContextColors(raw) {
+    const o = {};
+    for (const [k, v] of Object.entries(raw || {})) { const x = toHex6(v); if (CTX_CODE.test(k) && x) o[k] = x; }
+    if (writeMap(CTX_COLOR_KEY, o)) mirrorContextColors();
+  }
+  // Another tab saved new colours: follow them here too (e.g. an open Calendar tab).
+  addEventListener('storage', (e) => { if (e.key === COLOR_KEY || e.key === CTX_COLOR_KEY) mirrorContextColors(); });
   /** Split a selector list on top-level commas (not ones inside :is(...) etc.). */
   function splitSelectors(s) {
     const out = [];
@@ -341,46 +470,68 @@
     }
     return [255, 255, 255];
   }
-  function mirrorContextColors() {
-    for (const s of ctxSources) if (!s.isConnected) ctxSources.delete(s);
-    if (!root.hasAttribute('data-mc-dark') || !ctxSources.size) {
-      if (ctxStyle) { ctxStyle.remove(); ctxStyle = null; ctxSig = ''; }
-      return;
-    }
-    const sm = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(getComputedStyle(root).getPropertyValue('--mc-surface').trim());
-    const surface = sm ? [1, 2, 3].map((i) => parseInt(sm[i], 16)) : [38, 41, 47]; // fallback: Graphite's, the lightest theme surface
-    const css = [];
-    for (const s of ctxSources) {
-      let rules = null;
-      try { rules = s.sheet && s.sheet.cssRules; } catch (_) { /* not readable: skip */ }
-      if (!rules) continue;
-      for (const r of rules) {
-        if (r.type !== 1 || !CTX_SEL.test(r.selectorText || '')) continue; // 1 = style rule
-        const sel = splitSelectors(r.selectorText).filter((x) => CTX_SEL.test(x)).map((x) => 'html[data-mc-dark] ' + x).join(', ');
-        const decls = [];
-        for (let i = 0; i < r.style.length; i++) {
-          const p = r.style[i];
-          let v = r.style.getPropertyValue(p);
-          if (p === 'color') {
-            const c = rgbOf(v);
-            if (c) { const m = readableOn(c, surface); v = `rgb(${m[0]}, ${m[1]}, ${m[2]})`; }
+  /** Context code -> #rrggbb, by the priority described above. */
+  function contextColors(dark) {
+    const colors = new Map();
+    if (dark) {
+      for (const [k, v] of Object.entries(readMap(CTX_COLOR_KEY))) if (CTX_CODE.test(k) && HEX6.test(v)) colors.set(k, v);
+      for (const s of ctxSources) {
+        if (!s.isConnected) { ctxSources.delete(s); continue; }
+        let rules = null;
+        try { rules = s.sheet && s.sheet.cssRules; } catch (_) { /* not readable: skip */ }
+        if (!rules) continue;
+        for (const r of rules) {
+          if (r.type !== 1 || !CTX_SEL.test(r.selectorText || '')) continue; // 1 = style rule
+          const c = rgbOf(r.style.getPropertyValue('color')) || rgbOf(r.style.getPropertyValue('background-color'));
+          if (!c) continue;
+          const hex = '#' + c.slice(0, 3).map((v) => Math.round(v).toString(16).padStart(2, '0')).join('');
+          for (const sel of splitSelectors(r.selectorText)) {
+            const m = /^\.group_([a-z]+(?:_[a-z]+)*_\d+)$/.exec(sel);
+            if (m) colors.set(m[1], hex);
           }
-          decls.push(`${p}:${v}${r.style.getPropertyPriority(p) ? ' !important' : ''}`);
         }
-        if (sel && decls.length) css.push(`${sel}{${decls.join(';')}}`);
+      }
+    }
+    for (const [id, v] of Object.entries(readMap(COLOR_KEY))) if (/^\d+$/.test(id) && HEX6.test(v)) colors.set('course_' + id, v);
+    return colors;
+  }
+  function mirrorContextColors() {
+    const dark = root.hasAttribute('data-mc-dark');
+    const css = [];
+    if (dark) {
+      const sm = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(getComputedStyle(root).getPropertyValue('--mc-surface').trim());
+      const surface = sm ? [1, 2, 3].map((i) => parseInt(sm[i], 16)) : [38, 41, 47]; // fallback: Graphite's, the lightest theme surface
+      const P = 'html[data-mc-dark] ';
+      const EV = `${P}:is(#calendar-app, #calendar-drag-and-drop-container) .fc-event`;
+      for (const [code, hex] of contextColors(true)) {
+        const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+        const t = readableOn(c, surface), text = `rgb(${t[0]}, ${t[1]}, ${t[2]})`;
+        const g = `.group_${code}`;
+        // Everything Canvas colours with the class (squares, agenda icons/titles): as Canvas does.
+        css.push(`${P}${g}, ${P}${g}:hover, ${P}${g}:focus{color:${text};border-color:${hex};background-color:${hex}}`);
+        // Events: like the to-do panel's items.
+        css.push(`${EV}${g}, ${EV}${g}:hover, ${EV}${g}:focus{background-color:color-mix(in srgb, ${hex} 24%, var(--mc-surface));` +
+          `border-color:${hex};border-left:4px solid ${hex};color:var(--mc-text)}`);
+        css.push(`${EV}${g} :is(i, [class*="icon-"]){color:${text}}`);
+      }
+    } else {
+      for (const [code, hex] of contextColors(false)) {
+        const g = `.group_${code}`;
+        css.push(`${g}, ${g}:hover, ${g}:focus{color:${hex};border-color:${hex};background-color:${hex}}`);
       }
     }
     const text = css.join('\n');
     if (!text) { if (ctxStyle) { ctxStyle.remove(); ctxStyle = null; ctxSig = ''; } return; }
     if (!ctxStyle) { ctxStyle = document.createElement('style'); ctxStyle.id = 'mc-course-colors'; }
     if (text !== ctxSig) { ctxStyle.textContent = text; ctxSig = text; }
-    if (!ctxStyle.isConnected) (document.head || root).append(ctxStyle);
     keepContextStyleLast();
   }
-  /** Ties are decided by order, so our copy must stay after every stylesheet in <head>. */
+  /** Ties are decided by order, so our copy must stay after every stylesheet in <head>
+   *  (at document_start there's no <head> yet: it goes in <html> until one appears). */
   function keepContextStyleLast() {
-    const p = ctxStyle && ctxStyle.parentNode;
-    if (p && p.lastElementChild !== ctxStyle) p.append(ctxStyle);
+    if (!ctxStyle) return;
+    const p = document.head || root;
+    if (ctxStyle.parentNode !== p || p.lastElementChild !== ctxStyle) p.append(ctxStyle);
   }
 
   /* To-do panel width (set by dragging its left edge; remembered per browser). */
@@ -486,14 +637,11 @@
 
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'sync' || !changes.settings) return;
-    const prev = settings;
+    const prevSig = widgetSig();
     settings = MC.sanitize(changes.settings.newValue);
     cacheBoot();
     applyStyles();
-    // Only rebuild the widget if something it depends on changed.
-    if (JSON.stringify([prev.todo, prev.gpa]) !== JSON.stringify([settings.todo, settings.gpa])) {
-      mountWidget();
-    }
+    if (widgetSig() !== prevSig) mountWidget(); // only if something the panel depends on changed
   });
 
   function cacheBoot() {
@@ -565,9 +713,8 @@
     } catch (_) { return null; }
   }
   function writeCache(t, d) { try { localStorage.setItem(CACHE_KEY, JSON.stringify({ t, d })); } catch (_) {} }
-  function clearCache() { try { localStorage.removeItem(CACHE_KEY); } catch (_) {} }
+  function clearCache() { try { for (const k of [CACHE_KEY, COLOR_KEY, CTX_COLOR_KEY]) localStorage.removeItem(k); } catch (_) {} }
   const dataFresh = () => { const c = readCache(); return !!c && Date.now() - c.t < CACHE_MS; };
-  const onDashboard = () => location.pathname === '/' || location.pathname === '/dashboard';
 
   // Signing out (or reaching a login page) drops the cache, so whoever signs in next on
   // this browser never sees the previous person's classes.
@@ -576,7 +723,6 @@
     const f = e.target;
     if (f && f.getAttribute && /\/logout\b/.test(f.getAttribute('action') || '')) clearCache();
   }, true);
-  try { sessionStorage.removeItem('mc-data-v3'); } catch (_) {} // old per-tab cache
 
   let inflight = null;
   /** Fresh data from Canvas; concurrent callers share one set of requests. */
@@ -633,6 +779,7 @@
     // { "course_123": "#hex" } -> { "123": "#hex" }, keeping only well-formed hex colours.
     const colors = {};
     const raw = (colorRes[0] && colorRes[0].custom_colors) || {};
+    saveContextColors(raw); // the Calendar uses all of them (classes, groups, ...)
     for (const [k, v] of Object.entries(raw)) {
       const m = /^course_(\d+)$/.exec(k);
       if (m && /^#[0-9a-f]{3,8}$/i.test(v)) colors[m[1]] = v;
@@ -695,6 +842,9 @@
 
   // Start the requests while Canvas itself is still loading, instead of after it settles.
   if (onDashboard() && (settings.todo.enabled || settings.gpa.enabled) && !dataFresh()) fetchData().catch(() => {});
+  // Calendar: get the user's class colours straight from Canvas (one small request), so the
+  // colours show in dark mode even if the dashboard hasn't been opened yet.
+  if (ON_CALENDAR) api('/api/v1/users/self/colors', 1).then((r) => saveContextColors(r[0] && r[0].custom_colors)).catch(() => {});
 
   /* ---------- GPA math ---------- */
 
@@ -736,7 +886,6 @@
     return el;
   }
 
-  /** Only link to pages on this Canvas site (blocks javascript:/foreign URLs from API data). */
   /** Display name for a class: drops a trailing registrar/SIS code in parentheses, e.g.
    *  "IST 210, Section 002: Org Data (22681--UP---P-IST-----210-------002-)"
    *    -> "IST 210, Section 002: Org Data". Names without such a code are unchanged. */
@@ -746,6 +895,7 @@
     return m && /\d/.test(m[2]) && /-/.test(m[2]) ? m[1] : s;
   }
 
+  /** Only link to pages on this Canvas site (blocks javascript:/foreign URLs from API data). */
   function safeHref(u) {
     try {
       const url = new URL(u, location.origin);
@@ -1247,8 +1397,11 @@
     hideTip();
     if (cardObserver) { cardObserver.disconnect(); cardObserver = null; }
     dataReady = false;
-    document.querySelectorAll('.mc-grade').forEach((b) => b.remove());
-    document.querySelectorAll('[data-mc-badged]').forEach((c) => c.removeAttribute('data-mc-badged'));
+    clearBadges();
+  }
+  function clearBadges() {
+    for (const b of document.querySelectorAll('.mc-grade')) b.remove();
+    for (const c of document.querySelectorAll('[data-mc-badged]')) c.removeAttribute('data-mc-badged');
   }
 
   let quietRefresh = null; // set by the current mount: fetch fresh data, redraw if changed
@@ -1269,7 +1422,7 @@
     const mine = gen;
     const wantTodo = settings.todo.enabled, wantGrades = settings.gpa.enabled;
     if (!wantTodo && !wantGrades) return;
-    if (location.pathname !== '/' && location.pathname !== '/dashboard') return;
+    if (!onDashboard()) return;
 
     // To-do panel goes at the top of the RIGHT sidebar only.
     let body = null;
@@ -1301,16 +1454,14 @@
         const grading = data.grading || [], staff = data.staff || [];
         const colorOf = assignCourseColors(
           [...data.items, ...staff.map((c) => ({ cid: c.id, course: c.name }))], data.colors);
+        // The Calendar (any tab) uses these same colours: Canvas's for every class, the panel's
+        // own choice where it differs.
+        saveCourseColors(new Map([...Object.entries(data.colors || {}), ...colorOf].map(([id, c]) => [String(id), c])));
         const todoCard = buildTodo(data.items, gpa, colorOf, (c) => { body.classList.toggle('is-collapsed', c); if (host) host.classList.toggle('mc-collapsed', c); });
-        hideTip();
         body.replaceChildren(todoCard, buildGrading(grading, staff, colorOf) || '');
       }
       if (wantGrades) {
-        if (redraw) { // grades may have changed: rebuild the card badges
-          closeCalc();
-          document.querySelectorAll('.mc-grade').forEach((b) => b.remove());
-          document.querySelectorAll('[data-mc-badged]').forEach((c) => c.removeAttribute('data-mc-badged'));
-        }
+        if (redraw) { closeCalc(); clearBadges(); } // grades may have changed: rebuild the card badges
         decorateCards(); watchCards();
       } else closeCalc();
     };
