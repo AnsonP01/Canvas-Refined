@@ -31,6 +31,17 @@ A lightweight Chrome / Brave / Firefox extension (Manifest V3) that improves the
 - Toggle every feature, theme picker with live preview, accent color picker
 - Export / import settings as JSON
 
+## Download
+
+Every commit to `main` is built automatically ([.github/workflows/release.yml](.github/workflows/release.yml)) and published on the [Releases](https://github.com/AnsonP01/Canvas-Refined/releases) page:
+
+- `my-canvas-chromium-<version>.zip`: Chrome, Edge, Brave, Vivaldi, Opera. Unzip it, then follow the Chrome steps below and pick the unzipped folder.
+- `my-canvas-firefox-<version>.zip`: Firefox 128+. Load it with the Firefox steps below (pick the zip), or upload it to addons.mozilla.org for signing.
+
+A commit that changes the version in `manifest.json` becomes release `v<version>`; other commits become pre-releases `v<version>-build.<n>`. Pull requests are built too (zips attached to the workflow run), but not released.
+
+To build the same zips yourself: `python tools/build.py` (`python3` on macOS/Linux) writes `dist/chromium/`, `dist/firefox/` and both zips. `python tools/build.py chromium` or `firefox` builds one.
+
 ## Install (unpacked)
 
 ### Chrome / Brave / Edge
@@ -64,7 +75,7 @@ The extension runs on `*.instructure.com`. If your school uses another domain (e
 ## Project structure
 
 ```
-manifest.json      Manifest V3 config (Chrome; tools/build-firefox.py derives the Firefox one)
+manifest.json      Manifest V3 config (Chrome; tools/build.py derives the Firefox one)
 shared.js          Settings schema, defaults, sanitizing, schedule helpers (used everywhere)
 content.js         Style layer (settings -> <html> attributes) + dashboard widgets
 background.js      Service worker (Chrome) / event page (Firefox): wakes only when the dark-mode schedule flips
@@ -77,6 +88,8 @@ styles/
   fonts.css        @font-face for the bundled fonts
 fonts/             Bundled woff2 fonts (see Licenses)
 icons/             Extension icons
+tools/build.py     Builds dist/chromium, dist/firefox and their zips (build-firefox.py: Firefox only)
+.github/workflows/release.yml  Builds both on every commit and publishes a GitHub Release
 ```
 
 ### Adding a theme

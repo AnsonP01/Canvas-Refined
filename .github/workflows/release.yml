@@ -1,0 +1,118 @@
+# Builds the extension for Chromium browsers and Firefox on every commit, and publishes the
+# zips as a GitHub Release.
+#   - A commit that changes the version in manifest.json  -> release  v<version>  (latest)
+#   - Any other commit on main                            -> pre-release  v<version>-build.<n>
+#   - Pull requests                                       -> build only (zips as run artifacts)
+# Add [skip ci] to a commit message to skip it.
+name: Build and release
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write # create tags and releases
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false # never cut a release off half-way
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Read version
+        id: version
+        run: echo "version=$(python -c "import json; print(json.load(open('manifest.json'))['version'])")" >> "$GITHUB_OUTPUT"
+
+      - name: Build Chromium and Firefox packages
+        run: python tools/build.py
+
+      - name: Check the packages
+        run: |
+          python - <<'EOF'
+          import json, zipfile
+          v = '${{ steps.version.outputs.version }}'
+          for target in ('chromium', 'firefox'):
+              z = zipfile.ZipFile(f'dist/my-canvas-{target}-{v}.zip')
+              assert z.testzip() is None, f'{target}: corrupt zip'
+              m = json.loads(z.read('manifest.json'))
+              assert m['version'] == v, f'{target}: version {m["version"]} != {v}'
+              if target == 'firefox':
+                  assert 'scripts' in m['background'] and 'gecko' in m['browser_specific_settings']
+              else:
+                  assert m['background'] == {'service_worker': 'background.js'}
+              print(f'{target}: {len(z.namelist())} files, version {v}')
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: my-canvas-${{ steps.version.outputs.version }}
+          path: dist/my-canvas-*.zip
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: my-canvas-${{ needs.build.outputs.version }}
+          path: dist
+
+      - name: Pick the release tag
+        id: tag
+        run: |
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            # This version was already released: publish this commit as a build of it.
+            echo "tag=v$VERSION-build.$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
+            echo "title=My Canvas $VERSION (build $GITHUB_RUN_NUMBER)" >> "$GITHUB_OUTPUT"
+            echo "flags=--prerelease" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+            echo "title=My Canvas $VERSION" >> "$GITHUB_OUTPUT"
+            echo "flags=--latest" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Write release notes
+        run: |
+          {
+            git log -1 --format='%B' "$GITHUB_SHA" | grep -v '^Co-Authored-By:' | cat -s
+            echo
+            echo "Commit: $GITHUB_SHA"
+            echo
+            echo "## Install"
+            echo
+            echo "**Chrome, Edge, Brave, Vivaldi, Opera:** download \`my-canvas-chromium-$VERSION.zip\` and unzip it."
+            echo "Open \`chrome://extensions\`, turn on **Developer mode**, click **Load unpacked** and pick the unzipped folder."
+            echo
+            echo "**Firefox (128+):** download \`my-canvas-firefox-$VERSION.zip\`. For a quick try, open \`about:debugging\` →"
+            echo "**This Firefox** → **Load Temporary Add-on…** and pick the zip (removed when Firefox restarts)."
+            echo "To keep it installed, upload the zip to [addons.mozilla.org](https://addons.mozilla.org/developers/) for signing."
+          } > notes.md
+
+      - name: Publish release
+        run: |
+          gh release create "${{ steps.tag.outputs.tag }}" \
+            "dist/my-canvas-chromium-$VERSION.zip" \
+            "dist/my-canvas-firefox-$VERSION.zip" \
+            --target "$GITHUB_SHA" \
+            --title "${{ steps.tag.outputs.title }}" \
+            --notes-file notes.md \
+            ${{ steps.tag.outputs.flags }}
