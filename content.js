@@ -134,6 +134,9 @@
    * page actually paints and marks the misfits so dark.css can recolour them:
    *   data-mc-lightfix="n"  light neutral box (white/grey)  -> theme surface
    *   data-mc-lightfix="t"  light tinted box (highlight)    -> accent-tinted surface
+   *   data-mc-lightfix="b"  white box Canvas lays flat on the white page (no side padding,
+   *                         border or shadow)                -> the colour behind it, so it
+   *                         doesn't become a panel whose edges cut into its text
    *   data-mc-textfix       text/icon too dark to read on its background -> theme text
    * Changed parts are re-checked inside the MutationObserver callback, which runs
    * before the browser paints, so nothing flashes. Things that change colour without a DOM
@@ -160,10 +163,14 @@
   const lin = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
   const relLum = ([r, g, b]) => 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
   const contrast = (a, b) => { const x = relLum(a), y = relLum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+  const hexVar = (name) => {
+    const m = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(getComputedStyle(root).getPropertyValue(name).trim());
+    return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : null;
+  };
+  let pageRgbs = null; // the theme's page and surface colours: what Canvas's white page became
   function readAccent() {
-    const hex = getComputedStyle(root).getPropertyValue('--mc-accent').trim();
-    const m = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(hex);
-    accRgb = m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : null;
+    accRgb = hexVar('--mc-accent');
+    pageRgbs = null;
   }
   const isAccent = (c) => accRgb && Math.abs(accRgb[0] - c[0]) + Math.abs(accRgb[1] - c[1]) + Math.abs(accRgb[2] - c[2]) < 12;
 
@@ -182,11 +189,49 @@
     if (chroma > 60) return ''; // vivid colours (badges, highlighter) are meant to stand out
     return chroma <= 12 ? 'n' : 't';
   }
-  /** True if any visible border side is a light grey/pastel (glows on a dark page). */
   const SIDES = ['Top', 'Right', 'Bottom', 'Left'];
+  const near = (a, b) => Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]) < 6;
+  const OUT_OF_FLOW = /^(absolute|fixed|sticky)$/;
+  /** A white box ('n') that Canvas lays flat on its white page: no side padding, no border or
+   *  shadow, not floating over anything, and what's behind it was white too (now the theme's
+   *  page or surface colour, or another white box we themed). In Canvas you can't see where it
+   *  ends; as a dark panel its edges would run right along its text. */
+  function blendsIn(el, cs, c) {
+    if (Math.min(c[0], c[1], c[2]) < 250 || c[3] < 1) return false;
+    if (parseFloat(cs.paddingLeft) || parseFloat(cs.paddingRight) || cs.boxShadow !== 'none') return false;
+    if (cs.borderStyle !== 'none' && cs.borderWidth !== '0px') {
+      for (const side of SIDES) {
+        if (!(parseFloat(cs['border' + side + 'Width']) > 0) || /^(none|hidden)$/.test(cs['border' + side + 'Style'])) continue;
+        const b = rgbOf(cs['border' + side + 'Color']);
+        if (b && b[3] > 0) return false;
+      }
+    }
+    if (OUT_OF_FLOW.test(cs.position)) return false;
+    if (!pageRgbs) pageRgbs = [hexVar('--mc-bg'), hexVar('--mc-surface')].filter(Boolean);
+    for (let p = el.parentElement; p; p = p.parentElement) {
+      const kind = p.getAttribute(LF);
+      if (kind === 'n') return true;
+      if (kind) { if (kind !== 'b') return false; continue; }
+      const ps = getComputedStyle(p);
+      if (ps.backgroundImage !== 'none') return false;
+      const b = rgbOf(ps.backgroundColor);
+      if (b && b[3] >= 0.5) return pageRgbs.some((t) => near(t, b));
+      if (OUT_OF_FLOW.test(ps.position)) return false; // a clear popup/menu wrapper: keep it solid
+    }
+    return true; // reached the top: the theme page
+  }
+  /** True if any visible border side is a light grey/pastel (glows on a dark page). */
   function lightBorder(cs) {
     // Fast exits for the common cases (one read each instead of twelve).
     if (cs.borderStyle === 'none' || cs.borderWidth === '0px') return false;
+    // A zero-size box drawn only by its borders is a CSS arrow (e.g. the rubric's selected-rating
+    // arrow: clear sides, one coloured side). Recolouring all its sides would turn it into a box.
+    if (cs.width === '0px' || cs.height === '0px') {
+      for (const side of SIDES) {
+        const c = parseFloat(cs['border' + side + 'Width']) > 0 && rgbOf(cs['border' + side + 'Color']);
+        if (c && c[3] === 0) return false;
+      }
+    }
     for (const side of SIDES) {
       if (!(parseFloat(cs['border' + side + 'Width']) > 0)) continue;
       const st = cs['border' + side + 'Style'];
@@ -247,7 +292,12 @@
     // A course-coloured element (Calendar events, its class-list colour squares, ...) paints
     // its background/border in the course colour on purpose: never theme those away.
     const courseColored = CTX_CLASS.test(el.getAttribute('class') || '');
-    const kind = courseColored ? '' : lightKind(el, endBackground(el, cs));
+    const bgEnd = courseColored ? '' : endBackground(el, cs);
+    // A masked element's background is the colour of an icon drawn through the mask (e.g. the
+    // pop-up close X), not a box.
+    const masked = (cs.maskImage || cs.webkitMaskImage || 'none') !== 'none';
+    let kind = courseColored || masked ? '' : lightKind(el, bgEnd);
+    if (kind === 'n' && blendsIn(el, cs, rgbOf(bgEnd))) kind = 'b';
     const border = !courseColored && lightBorder(cs);
     // A light-fixed box gets the theme text colour from dark.css, so its own text is fine.
     const fg = !kind && hasOwnText(el) ? rgbOf(cs.color) : null;

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "My Canvas",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "minimum_chrome_version": "111",
   "description": "Dark mode, dashboard customization, a better to-do list and a GPA calculator for Canvas LMS.",
   "permissions": ["storage", "alarms"],

@@ -19,21 +19,29 @@ html[data-mc-dark] .ic-Dashboard-header {
 }
 
 html[data-mc-dark] .ic-app-header,
-html[data-mc-dark] .ic-app-nav-toggle-and-crumbs,
 html[data-mc-dark] .ic-DashboardCard,
-html[data-mc-dark] .ic-DashboardCard__box,
 html[data-mc-dark] .Button,
 html[data-mc-dark] .ui-widget-content,
-html[data-mc-dark] .ic-item-row,
 html[data-mc-dark] .ig-row,
-html[data-mc-dark] .context_module,
-html[data-mc-dark] .ic-Table,
-html[data-mc-dark] table,
-html[data-mc-dark] .Sidebar__Section,
 html[data-mc-dark] .dropdown-menu,
 html[data-mc-dark] .ui-dialog,
 html[data-mc-dark] .ui-menu {
   background: var(--mc-surface) !important;
+  color: var(--mc-text) !important;
+  border-color: var(--mc-border) !important;
+}
+/* Rows, tables and sections Canvas draws straight on the page (no background of their own, so
+   no side padding either): keep them on the page colour. A panel behind them would end right
+   at their text and look cut off. */
+html[data-mc-dark] .ic-app-nav-toggle-and-crumbs,
+html[data-mc-dark] .ic-DashboardCard__box,
+html[data-mc-dark] .ic-item-row,
+html[data-mc-dark] .context_module,
+html[data-mc-dark] .ic-Table,
+html[data-mc-dark] table,
+html[data-mc-dark] .Sidebar__Section {
+  background-color: transparent !important;
+  background-image: none !important;
   color: var(--mc-text) !important;
   border-color: var(--mc-border) !important;
 }
@@ -381,6 +389,10 @@ html[data-mc-dark] [data-mc-lightfix="t"]:not(#mc-x):not(#mc-y) {
   background-color: color-mix(in srgb, var(--mc-accent) 22%, var(--mc-surface)) !important;
   color: var(--mc-text) !important;
 }
+html[data-mc-dark] [data-mc-lightfix="b"]:not(#mc-x):not(#mc-y) {
+  background-color: transparent !important;
+  color: var(--mc-text) !important;
+}
 html[data-mc-dark] [data-mc-borderfix]:not(#mc-x):not(#mc-y) {
   border-color: var(--mc-border) !important;
 }
@@ -396,4 +408,27 @@ html[data-mc-dark] :is([data-mc-measuring], [data-mc-lightfix], [data-mc-borderf
    contents. Those exclusions sit in :where() so they add no specificity. */
 html[data-mc-dark] [data-mc-lightfix] :not([class*="-color-brand"]):not([class*="-color-secondary"]):not([class*="-text-color-secondary"]):not([class*="checkboxFacade"] *):where(:not([class*="group_course_"]):not([class*="group_course_"] *):not([class*="group_group_"]):not([class*="group_group_"] *):not([class*="group_user_"]):not([class*="group_user_"] *):not([class*="group_account_"]):not([class*="group_account_"] *):not([class*="group_appointment_group_"]):not([class*="group_appointment_group_"] *)):not(#mc-x) {
   color: var(--mc-text) !important;
+}
+
+/* Rubric: the selected rating's arrow (a CSS triangle on the bar under the rating) is the bar's
+   colour, as in Canvas. Set on the border itself, not through `color`: a themed box around the
+   rubric gives its contents the theme text colour, which would turn the arrow grey. Custom
+   (account) rating colours come inline and are left alone. */
+html[data-mc-dark] .react-rubric .rating-tier.selected .shader .triangle:not(#mc-x):not(#mc-y) {
+  background: none !important;
+  border-top-color: transparent !important;
+  border-left-color: transparent !important;
+  border-right-color: transparent !important;
+}
+html[data-mc-dark] .react-rubric .rating-tier.selected .exceedsMasteryShader .triangle:not(#mc-x):not(#mc-y) { border-bottom-color: #127A1B !important; }
+html[data-mc-dark] .react-rubric .rating-tier.selected .meetsMasteryShader .triangle:not(#mc-x):not(#mc-y) { border-bottom-color: #00AC18 !important; }
+html[data-mc-dark] .react-rubric .rating-tier.selected .nearMasteryShader .triangle:not(#mc-x):not(#mc-y) { border-bottom-color: #FC5E13 !important; }
+html[data-mc-dark] .react-rubric .rating-tier.selected .wellBelowMasteryShader .triangle:not(#mc-x):not(#mc-y) { border-bottom-color: #EE0612 !important; }
+
+/* Pop-up (jQuery UI dialog) close X: Canvas draws it as a black image, which can't be seen on a
+   dark title bar. Draw the same X in the theme's text colour, at Canvas's size and opacity. */
+html[data-mc-dark] .ui-dialog .ui-dialog-titlebar-close :is(span, .ui-icon):not(.ui-button-icon-space):not(#mc-x) {
+  background: var(--mc-text) !important;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3 3l10 10M13 3L3 13' stroke='%23000' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E") 50% 50% / 12px no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3 3l10 10M13 3L3 13' stroke='%23000' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E") 50% 50% / 12px no-repeat;
 }
