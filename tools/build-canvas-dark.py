@@ -13,7 +13,9 @@ theme's --mc-* colours. Rules are copied in Canvas's order with Canvas's selecto
 (+ the html[data-mc-dark] prefix, which is more specific), so Canvas's cascade is
 reproduced exactly in dark mode; colours that already work are copied unchanged so
 the order still holds. Nothing is !important unless Canvas's rule was, so inline
-colours (course colours etc.) still win, as they do in Canvas.
+colours (course colours etc.) still win, as they do in Canvas. Course colours that
+Canvas adds at runtime as classes (the Calendar's .group_course_123 {...} <style>)
+aren't in these bundles; content.js copies those with the same prefix at runtime.
 
 Output (in styles/canvas/):
   common.css          common bundle + school CSS + brand variable overrides

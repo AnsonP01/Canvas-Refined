@@ -384,6 +384,8 @@ html[data-mc-dark] [data-mc-borderfix]:not(#mc-x):not(#mc-y) {
 html[data-mc-dark] [data-mc-textfix]:not(#mc-x):not(#mc-y) {
   color: var(--mc-text) !important;
 }
-html[data-mc-dark] [data-mc-lightfix] :not([class*="-color-brand"]):not([class*="-color-secondary"]):not([class*="-text-color-secondary"]):not([class*="checkboxFacade"] *):not(#mc-x) {
+/* ...except course-coloured items (Calendar events etc., classes like group_course_123) and their
+   contents. Those exclusions sit in :where() so they add no specificity. */
+html[data-mc-dark] [data-mc-lightfix] :not([class*="-color-brand"]):not([class*="-color-secondary"]):not([class*="-text-color-secondary"]):not([class*="checkboxFacade"] *):where(:not([class*="group_course_"]):not([class*="group_course_"] *):not([class*="group_group_"]):not([class*="group_group_"] *):not([class*="group_user_"]):not([class*="group_user_"] *):not([class*="group_account_"]):not([class*="group_account_"] *):not([class*="group_appointment_group_"]):not([class*="group_appointment_group_"] *)):not(#mc-x) {
   color: var(--mc-text) !important;
 }

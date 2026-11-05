@@ -33,7 +33,7 @@ A lightweight Chrome / Brave / Firefox extension (Manifest V3) that improves the
 
 ## Install (unpacked)
 
-### Chrome / Brave / Edge (Chrome 121+)
+### Chrome / Brave / Edge
 
 1. Download or clone this repository.
 2. Open `chrome://extensions` (Chrome) or `brave://extensions` (Brave).
@@ -45,12 +45,15 @@ After editing any file, click the reload icon on the extension and refresh Canva
 
 ### Firefox (128+)
 
-1. Download or clone this repository.
-2. Open `about:debugging#/runtime/this-firefox`.
-3. Click **Load Temporary Add-on…** and select `manifest.json` in this folder.
-4. Open your Canvas site. If the popup shows **Allow on Canvas**, click it, then reload Canvas.
+Firefox needs a slightly different manifest (Chrome rejects Firefox's `background.scripts`), so build the Firefox copy first. It needs Python 3.
 
-A temporary add-on is removed when Firefox restarts. To keep it installed, sign it through [addons.mozilla.org](https://addons.mozilla.org/developers/) (as an unlisted add-on if you don't want it in the store), then install the signed `.xpi` file.
+1. Download or clone this repository.
+2. In this folder, run `python tools/build-firefox.py` (`python3` on macOS/Linux). This creates `dist/firefox/`.
+3. Open `about:debugging#/runtime/this-firefox`.
+4. Click **Load Temporary Add-on…** and select `dist/firefox/manifest.json`. Don't pick the `manifest.json` at the top of the folder: that one is for Chrome.
+5. Open your Canvas site. If the popup shows **Allow on Canvas**, click it, then reload Canvas.
+
+A temporary add-on is removed when Firefox restarts. To keep it installed, upload `dist/my-canvas-firefox-<version>.zip` (made by the same script) to [addons.mozilla.org](https://addons.mozilla.org/developers/) for signing (as an unlisted add-on if you don't want it in the store), then install the signed `.xpi` file. Run the script again after updating, so `dist/firefox/` has the latest files.
 
 In Firefox, **Import JSON** opens the settings in a tab, because Firefox closes the popup when a file picker opens.
 
@@ -61,7 +64,7 @@ The extension runs on `*.instructure.com`. If your school uses another domain (e
 ## Project structure
 
 ```
-manifest.json      Manifest V3 config
+manifest.json      Manifest V3 config (Chrome; tools/build-firefox.py derives the Firefox one)
 shared.js          Settings schema, defaults, sanitizing, schedule helpers (used everywhere)
 content.js         Style layer (settings -> <html> attributes) + dashboard widgets
 background.js      Service worker (Chrome) / event page (Firefox): wakes only when the dark-mode schedule flips

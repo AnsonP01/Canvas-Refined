@@ -68,6 +68,7 @@
     st.setProperty('--mc-grad-b', d.gradB);
     whenDomReady(themeFix);
     loadBundleCss();
+    mirrorContextColors();
   }
 
   /* Canvas page stylesheets. Every Canvas CSS bundle a page loads (grade_summary-<hash>.css,
@@ -100,15 +101,20 @@
     }
   }
   function watchBundles() {
-    const scan = (n) => { for (const l of n.querySelectorAll('link[href*="/bundles/"]')) noteBundleLink(l); };
+    const scan = (n) => {
+      for (const l of n.querySelectorAll('link[href*="/bundles/"]')) noteBundleLink(l);
+      for (const s of n.querySelectorAll('style')) noteContextStyle(s);
+    };
     if (document.head) scan(document.head);
     if (bundleObs) return;
     // Only <html>'s and <head>'s direct children are watched (that's where Canvas puts its CSS).
     bundleObs = new MutationObserver((recs) => {
       for (const r of recs) for (const n of r.addedNodes) {
         if (n.nodeName === 'LINK') noteBundleLink(n);
+        else if (n.nodeName === 'STYLE') noteContextStyle(n);
         else if (n.nodeName === 'HEAD') { scan(n); bundleObs.observe(n, { childList: true }); }
       }
+      keepContextStyleLast();
     });
     bundleObs.observe(root, { childList: true });
     if (document.head) bundleObs.observe(document.head, { childList: true });
@@ -209,9 +215,12 @@
     if (el.hasAttribute(BF)) el.removeAttribute(BF);
     memo.delete(el);
     const cs = getComputedStyle(el);
-    const kind = lightKind(el, cs);
+    // A course-coloured element (Calendar events, its class-list colour squares, ...) paints
+    // its background/border in the course colour on purpose: never theme those away.
+    const courseColored = CTX_CLASS.test(el.getAttribute('class') || '');
+    const kind = courseColored ? '' : lightKind(el, cs);
     if (kind) { el.setAttribute(LF, kind); markedSig.set(el, sigOf(el)); }
-    if (lightBorder(cs)) { el.setAttribute(BF, ''); markedSig.set(el, sigOf(el)); }
+    if (!courseColored && lightBorder(cs)) { el.setAttribute(BF, ''); markedSig.set(el, sigOf(el)); }
     if (!hasOwnText(el)) return;
     const fg = rgbOf(cs.color);
     if (!fg || fg[3] < 0.3) return;
@@ -291,6 +300,87 @@
       for (const ev of FIX_EVENTS) document.addEventListener(ev, onPointer, true);
     }
     fullScan();
+  }
+
+  /* Course colours (Calendar). Canvas colours each class's events, agenda items and class-list
+   * squares with a <style> it adds at runtime:
+   *   .group_course_123, .group_course_123:hover, .group_course_123:focus { color: X; border-color: X; background-color: X }
+   * It beats the calendar's defaults (.fc-event { color: #fff; border-color: #3a87ad }) only by
+   * coming later at the same specificity. Our dark copies of those defaults carry the
+   * html[data-mc-dark] prefix (more specific), so they would win and every event would lose its
+   * colour. So in dark mode, copy Canvas's runtime rules with the same prefix, placed after our
+   * stylesheets: Canvas's own cascade again. Text colours too dark to read on the theme surface
+   * are lightened (same hue); backgrounds and borders keep the exact course colour. */
+  const CTX_SEL = /\.group_[a-z]+(?:_[a-z]+)*_\d+(?![\w-])/;            // in a selector
+  const CTX_CLASS = /(?:^|\s)group_[a-z]+(?:_[a-z]+)*_\d+(?=\s|$)/;   // in a class attribute
+  const ctxSources = new Set();
+  let ctxStyle = null, ctxSig = '';
+  function noteContextStyle(el) {
+    if (el === ctxStyle || ctxSources.has(el) || !CTX_SEL.test(el.textContent || '')) return;
+    ctxSources.add(el);
+    mirrorContextColors();
+  }
+  /** Split a selector list on top-level commas (not ones inside :is(...) etc.). */
+  function splitSelectors(s) {
+    const out = [];
+    let depth = 0, start = 0;
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+      if (ch === '(' || ch === '[') depth++;
+      else if (ch === ')' || ch === ']') depth--;
+      else if (ch === ',' && depth === 0) { out.push(s.slice(start, i)); start = i + 1; }
+    }
+    out.push(s.slice(start));
+    return out.map((x) => x.trim()).filter(Boolean);
+  }
+  /** The same colour, mixed with just enough white to read on `bg` (4.5:1). */
+  function readableOn(c, bg) {
+    for (let t = 0; t <= 1; t += 0.05) {
+      const m = [0, 1, 2].map((i) => Math.round(c[i] + (255 - c[i]) * t));
+      if (contrast(m, bg) >= 4.5) return m;
+    }
+    return [255, 255, 255];
+  }
+  function mirrorContextColors() {
+    for (const s of ctxSources) if (!s.isConnected) ctxSources.delete(s);
+    if (!root.hasAttribute('data-mc-dark') || !ctxSources.size) {
+      if (ctxStyle) { ctxStyle.remove(); ctxStyle = null; ctxSig = ''; }
+      return;
+    }
+    const sm = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(getComputedStyle(root).getPropertyValue('--mc-surface').trim());
+    const surface = sm ? [1, 2, 3].map((i) => parseInt(sm[i], 16)) : [38, 41, 47]; // fallback: Graphite's, the lightest theme surface
+    const css = [];
+    for (const s of ctxSources) {
+      let rules = null;
+      try { rules = s.sheet && s.sheet.cssRules; } catch (_) { /* not readable: skip */ }
+      if (!rules) continue;
+      for (const r of rules) {
+        if (r.type !== 1 || !CTX_SEL.test(r.selectorText || '')) continue; // 1 = style rule
+        const sel = splitSelectors(r.selectorText).filter((x) => CTX_SEL.test(x)).map((x) => 'html[data-mc-dark] ' + x).join(', ');
+        const decls = [];
+        for (let i = 0; i < r.style.length; i++) {
+          const p = r.style[i];
+          let v = r.style.getPropertyValue(p);
+          if (p === 'color') {
+            const c = rgbOf(v);
+            if (c) { const m = readableOn(c, surface); v = `rgb(${m[0]}, ${m[1]}, ${m[2]})`; }
+          }
+          decls.push(`${p}:${v}${r.style.getPropertyPriority(p) ? ' !important' : ''}`);
+        }
+        if (sel && decls.length) css.push(`${sel}{${decls.join(';')}}`);
+      }
+    }
+    const text = css.join('\n');
+    if (!text) { if (ctxStyle) { ctxStyle.remove(); ctxStyle = null; ctxSig = ''; } return; }
+    if (!ctxStyle) { ctxStyle = document.createElement('style'); ctxStyle.id = 'mc-course-colors'; }
+    if (text !== ctxSig) { ctxStyle.textContent = text; ctxSig = text; }
+    if (!ctxStyle.isConnected) (document.head || root).append(ctxStyle);
+    keepContextStyleLast();
+  }
+  /** Ties are decided by order, so our copy must stay after every stylesheet in <head>. */
+  function keepContextStyleLast() {
+    const p = ctxStyle && ctxStyle.parentNode;
+    if (p && p.lastElementChild !== ctxStyle) p.append(ctxStyle);
   }
 
   /* To-do panel width (set by dragging its left edge; remembered per browser). */
