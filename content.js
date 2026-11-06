@@ -763,7 +763,20 @@
     } catch (_) { return null; }
   }
   function writeCache(t, d) { try { localStorage.setItem(CACHE_KEY, JSON.stringify({ t, d })); } catch (_) {} }
-  function clearCache() { try { for (const k of [CACHE_KEY, COLOR_KEY, CTX_COLOR_KEY]) localStorage.removeItem(k); } catch (_) {} }
+  function clearCache() { try { for (const k of [CACHE_KEY, COLOR_KEY, CTX_COLOR_KEY, SHAPE_KEY]) localStorage.removeItem(k); } catch (_) {} }
+
+  // Shape of the panel as last drawn (how many rows, days, grading groups; which classes had a
+  // grade badge), so the loading skeleton has the same size and nothing jumps when data lands.
+  const SHAPE_KEY = 'mc-skel-v1';
+  function readShape() {
+    try {
+      const o = JSON.parse(localStorage.getItem(SHAPE_KEY));
+      return o && typeof o === 'object' ? o : null;
+    } catch (_) { return null; }
+  }
+  function saveShape(patch) {
+    try { localStorage.setItem(SHAPE_KEY, JSON.stringify({ ...(readShape() || {}), ...patch })); } catch (_) {}
+  }
   const dataFresh = () => { const c = readCache(); return !!c && Date.now() - c.t < CACHE_MS; };
 
   // Signing out (or reaching a login page) drops the cache, so whoever signs in next on
@@ -774,11 +787,25 @@
     if (f && f.getAttribute && /\/logout\b/.test(f.getAttribute('action') || '')) clearCache();
   }, true);
 
-  let inflight = null;
-  /** Fresh data from Canvas; concurrent callers share one set of requests. */
-  function fetchData() {
-    if (!inflight) inflight = fetchDataNow().finally(() => { inflight = null; });
+  let inflight = null, partial = null;
+  const partialSubs = new Set();
+  /** Fresh data from Canvas; concurrent callers share one set of requests.
+   *  `onPartial` gets the to-do data early (grading: null) when the "Needs grading" lists
+   *  still need their own round of requests, so the to-do list doesn't wait for them. */
+  function fetchData(onPartial) {
+    if (!inflight) {
+      partial = null;
+      inflight = fetchDataNow().finally(() => { inflight = null; partial = null; partialSubs.clear(); });
+    }
+    if (onPartial) {
+      partialSubs.add(onPartial);
+      if (partial) { try { onPartial(partial); } catch (_) {} } // requests started before this caller asked
+    }
     return inflight;
+  }
+  function emitPartial(d) {
+    partial = d;
+    for (const f of partialSubs) { try { f(d); } catch (_) { /* a broken draw must not stop the fetch */ } }
   }
 
   /** Fetch courses + planner items, keep only the fields we need, and cache them. */
@@ -821,7 +848,8 @@
     }
 
     // "Needs grading" comes only from the classes you teach/assist that are on the dashboard.
-    const todoLists = await Promise.all(staff.map((c) =>
+    // Started now, awaited last: the to-do list is drawn while these are still on their way.
+    const todoLists = Promise.all(staff.map((c) =>
       api(`/api/v1/courses/${encodeURIComponent(c.id)}/todo?per_page=100`, 3)
         .then((list) => list.map((t) => ({ t, c })))
         .catch(() => [])));
@@ -836,21 +864,8 @@
     }
 
     const TYPES = new Set(['assignment', 'quiz', 'discussion_topic']);
-    const grading = todoLists.flat()
-      .filter(({ t }) => t && t.type === 'grading' && t.needs_grading_count > 0 && t.assignment)
-      .map(({ t, c }) => ({
-        title: t.assignment.name || 'Untitled',
-        course: c.name,
-        cid: c.id,
-        count: t.needs_grading_count,
-        due: t.assignment.due_at || null,
-        pts: typeof t.assignment.points_possible === 'number' ? t.assignment.points_possible : null,
-        url: t.html_url
-      }));
-
-    const data = {
+    const base = {
       colors,
-      grading,
       staff,
       courses: courses
         .map((c) => {
@@ -886,6 +901,20 @@
           };
         })
     };
+    if (staff.length) emitPartial({ ...base, grading: null });
+
+    const grading = (await todoLists).flat()
+      .filter(({ t }) => t && t.type === 'grading' && t.needs_grading_count > 0 && t.assignment)
+      .map(({ t, c }) => ({
+        title: t.assignment.name || 'Untitled',
+        course: c.name,
+        cid: c.id,
+        count: t.needs_grading_count,
+        due: t.assignment.due_at || null,
+        pts: typeof t.assignment.points_possible === 'number' ? t.assignment.points_possible : null,
+        url: t.html_url
+      }));
+    const data = { ...base, grading };
     writeCache(now, data);
     return data;
   }
@@ -936,6 +965,64 @@
     return el;
   }
 
+  /* ---------- skeleton (loading placeholders) ---------- */
+  // Grey blocks laid out like the real panel (same classes, so same spacing), shown while the
+  // first data loads. Sized from the last real panel (readShape) so nothing jumps when it lands.
+
+  const SK_W = [72, 56, 84, 64, 78, 50]; // title widths (%), varied so rows don't look stamped out
+  const sk = (cls, width) => h('span', { class: cls ? 'sk ' + cls : 'sk', style: width ? `width:${width}` : null });
+  const skRow = (i, lead = 'sk-check') =>
+    h('li', { class: 'sk-li' }, sk(lead),
+      h('div', { class: 'body' },
+        sk('sk-title', SK_W[i % SK_W.length] + '%'), sk('sk-text', 30 + ((i * 7) % 25) + '%'), sk('sk-text sk-due', '28%')));
+  const skNum = (v, d, max) => (Number.isInteger(v) && v >= 0 ? Math.min(v, max) : d);
+  /** Screen readers hear one "Loading …" line; the grey blocks themselves are hidden from them. */
+  const skWrap = (label, ...kids) =>
+    h('div', { class: 'skel', role: 'status', 'aria-busy': 'true' }, h('span', { class: 'sr' }, label), h('div', { 'aria-hidden': 'true' }, kids));
+
+  function skelTodo(collapsed) {
+    if (collapsed) {
+      return skWrap('Loading your to-do list…',
+        h('section', { class: 'card collapsed' }, sk('sk-toggle'), sk('sk-ring'), sk('sk-text', '44px')));
+    }
+    const s = readShape() || {};
+    const today = skNum(s.today, 0, 6), rows = skNum(s.rows, 4, 6);
+    const days = Math.min(rows, Math.max(1, skNum(s.days, 2, 6)));
+    const per = Math.ceil(rows / Math.max(1, days));
+    let n = 0;
+    const dayEls = [];
+    for (let d = 0; d < days && n < rows; d++) {
+      const count = Math.min(per, rows - n);
+      dayEls.push(h('div', { class: 'day' },
+        h('div', { class: 'day-h' }, sk('sk-text', 92 + d * 14 + 'px')),
+        h('ul', { class: 'todo' }, Array.from({ length: count }, () => skRow(n++)))));
+    }
+    return skWrap('Loading your to-do list…',
+      h('section', { class: 'card' },
+        h('div', { class: 'row' },
+          sk('sk-ring'),
+          h('div', { class: 'head' }, sk('sk-h3'), sk('sk-text', '55%')),
+          sk('sk-toggle')),
+        h('div', { class: 'filters' }, sk('sk-field'), sk('sk-field')),
+        today ? h('div', { class: 'today sk-today' },
+          h('div', { class: 'day-h' }, sk('sk-text', '80px')),
+          h('ul', { class: 'todo' }, Array.from({ length: today }, (_, i) => skRow(i + 3)))) : null,
+        rows ? h('div', { class: 'days' }, dayEls) : !today && sk('sk-text', '50%')));
+  }
+
+  /** "Needs grading" placeholder before we even know your classes (first visit of the day). */
+  function skelGrading(groups) {
+    return skWrap('Loading submissions to grade…',
+      h('section', { class: 'card grading' },
+        h('div', { class: 'row' }, h('div', { class: 'head' }, sk('sk-h3', '150px'), sk('sk-text', '45%'))),
+        Array.from({ length: groups }, (_, g) => h('div', { class: 'group' },
+          h('div', { class: 'sk-summary' }, sk('sk-dot'), sk('sk-text', 38 + g * 9 + '%')),
+          h('ul', { class: 'todo' }, skRow(g * 2 + 1, 'sk-badge'))))));
+  }
+
+  /** Short lines standing in for text that's on its way (hover preview, calculator). */
+  const skLines = (...widths) => widths.map((w) => sk('sk-text', w));
+
   /** Display name for a class: drops a trailing registrar/SIS code in parentheses, e.g.
    *  "IST 210, Section 002: Org Data (22681--UP---P-IST-----210-------002-)"
    *    -> "IST 210, Section 002: Org Data". Names without such a code are unchanged. */
@@ -965,14 +1052,21 @@
 
   /* ---------- hover preview ---------- */
 
-  const descCache = new Map();
-  let tipHost = null, tipBody = null, tipTimer = 0, tipFor = null;
+  const descCache = new Map(); // key -> Promise<text>; one request per item, even mid-flight
+  let tipHost = null, tipBody = null, tipTimer = 0, tipPre = 0, tipFor = null;
 
-  /** Fetch an item's description once and reduce it to safe plain text.
-   *  DOMParser documents are inert (no scripts run, no images load). */
-  async function fetchDescription(item) {
+  /** An item's description as safe plain text, fetched once (a failed fetch can be retried). */
+  function fetchDescription(item) {
     const key = item.type + item.pid;
-    if (descCache.has(key)) return descCache.get(key);
+    if (!descCache.has(key)) {
+      const p = loadDescription(item);
+      descCache.set(key, p);
+      p.catch(() => descCache.delete(key));
+    }
+    return descCache.get(key);
+  }
+  /** DOMParser documents are inert (no scripts run, no images load). */
+  async function loadDescription(item) {
     const path = { assignment: 'assignments', quiz: 'quizzes', discussion_topic: 'discussion_topics' }[item.type];
     let text = '';
     if (path && item.cid && item.pid) {
@@ -980,7 +1074,6 @@
       const html = (o && (o.description || o.message)) || '';
       text = new DOMParser().parseFromString(html, 'text/html').body.textContent.replace(/\s+/g, ' ').trim();
     }
-    descCache.set(key, text);
     return text;
   }
 
@@ -996,6 +1089,10 @@
   function showTip(item, li) {
     if (!extAlive()) return;
     clearTimeout(tipTimer);
+    clearTimeout(tipPre);
+    // Start fetching once the pointer has rested briefly, so the text is usually there by the
+    // time the preview opens; a pointer just passing over the list sends nothing.
+    tipPre = setTimeout(() => { if (extAlive()) fetchDescription(item).catch(() => {}); }, 120);
     tipTimer = setTimeout(async () => {
       // Re-check: the extension may have been reloaded during the 350 ms hover delay.
       if (!extAlive()) return;
@@ -1009,13 +1106,16 @@
       }
       tipFor = item;
       const meta = [shortCourse(item.course), item.pts != null ? `${item.pts} pts` : null].filter(Boolean).join(' · ');
-      tipBody.replaceChildren(h('h3', null, item.title), h('p', { class: 'muted small' }, meta), h('p', { class: 'desc muted' }, 'Loading…'));
+      tipBody.replaceChildren(h('h3', null, item.title), h('p', { class: 'muted small' }, meta),
+        h('p', { class: 'desc muted', 'aria-busy': 'true' }, skLines('100%', '94%', '62%')));
       tipHost.style.display = 'block';
       placeTip(li);
       let text = null;
       try { text = await fetchDescription(item); } catch (_) {}
       if (tipFor !== item) return; // pointer moved on
-      tipBody.querySelector('.desc').textContent =
+      const desc = tipBody.querySelector('.desc');
+      desc.removeAttribute('aria-busy');
+      desc.textContent =
         text == null ? 'Preview unavailable.' : text ? (text.length > 450 ? text.slice(0, 450).trimEnd() + '…' : text) : 'No description provided.';
       placeTip(li);
     }, 350);
@@ -1023,6 +1123,7 @@
 
   function hideTip() {
     clearTimeout(tipTimer);
+    clearTimeout(tipPre);
     tipFor = null;
     if (tipHost) tipHost.style.display = 'none';
   }
@@ -1263,9 +1364,12 @@
 
   /** "Needs grading" card: one section per class you are a TA/LA/instructor for (and that is
    *  on the dashboard), listing assignments with ungraded submissions. Returns null when you
-   *  have no such classes. */
+   *  have no such classes. `list` null = still loading: the classes are known already, so they
+   *  are shown with placeholders where their counts and assignments will go. */
   function buildGrading(list, staff, colorOf) {
     if (!staff.length) return null;
+    const pending = list == null;
+    if (pending) list = [];
     const PER_GROUP = 5;
     const byDue = (a, b) => (a.due ? new Date(a.due) : Infinity) - (b.due ? new Date(b.due) : Infinity);
     const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
@@ -1301,38 +1405,58 @@
           h('i', { class: 'dot', 'aria-hidden': 'true' }),
           h('span', { class: 'gname' }, shortCourse(g.name)),
           g.role && h('span', { class: 'role', title: `Your role: ${g.role}` }, g.role),
-          h('span', { class: 'count', title: plural(g.total, 'submission', 'submissions') + ' to grade' }, String(g.total))),
-        g.items.length ? ul : h('p', { class: 'muted small caught-up' }, 'All caught up, nothing to grade.'),
-        more);
+          pending ? sk('sk-chip')
+            : h('span', { class: 'count', title: plural(g.total, 'submission', 'submissions') + ' to grade' }, String(g.total))),
+        pending ? h('ul', { class: 'todo', 'aria-hidden': 'true' }, skRow(g.name.length, 'sk-badge'))
+          : g.items.length ? ul : h('p', { class: 'muted small caught-up' }, 'All caught up, nothing to grade.'),
+        !pending && more);
     };
 
     const assignments = groups.reduce((n, g) => n + g.items.length, 0);
-    return h('section', { class: 'card grading' },
+    return h('section', { class: 'card grading', 'aria-busy': pending ? 'true' : null },
       h('div', { class: 'row' },
         h('div', { class: 'head' },
-          h('h3', null, 'Needs grading', h('span', { class: 'chip' }, String(total))),
-          h('p', { class: 'muted' },
-            total
-              ? `${plural(total, 'submission', 'submissions')} · ${plural(assignments, 'assignment', 'assignments')}`
-              : 'All caught up'))),
+          h('h3', null, 'Needs grading', pending ? sk('sk-chip') : h('span', { class: 'chip' }, String(total))),
+          pending ? h('p', { class: 'muted' }, h('span', { class: 'sr' }, 'Loading submissions to grade…'), sk('sk-text', '45%'))
+            : h('p', { class: 'muted' },
+              total
+                ? `${plural(total, 'submission', 'submissions')} · ${plural(assignments, 'assignment', 'assignments')}`
+                : 'All caught up'))),
       ...groups.map(group));
   }
 
-  /** "What grade do I need?" form for one course. Fetches its assignments lazily. */
+  /** Share of a class's points not graded yet (%), or null if unknown. Fetched once per class
+   *  (cleared when grades change); started on hover so the calculator usually opens filled in. */
+  const remainingCache = new Map();
+  function remainingWeight(course) {
+    const key = String(course.id);
+    if (!remainingCache.has(key)) {
+      const p = api(`/api/v1/courses/${course.id}/assignments?include[]=submission&per_page=100`, 5).then((list) => {
+        let total = 0, graded = 0;
+        for (const a of list) {
+          const s = a.submission;
+          if (!a.points_possible || a.omit_from_final_grade || (s && s.excused)) continue;
+          total += a.points_possible;
+          if (s && typeof s.score === 'number') graded += a.points_possible;
+        }
+        return total > 0 ? Math.round(((total - graded) / total) * 1000) / 10 : null;
+      });
+      remainingCache.set(key, p);
+      p.catch(() => remainingCache.delete(key));
+    }
+    return remainingCache.get(key);
+  }
+
+  /** "What grade do I need?" form for one course. */
   async function initCalc(box, course) {
-    box.replaceChildren(h('p', { class: 'muted' }, 'Loading assignments…'));
+    const skRowCalc = (w) => h('div', { class: 'sk-calc-row' }, sk('sk-text', w), sk('sk-input'));
+    box.replaceChildren(skWrap('Loading assignments…', skRowCalc('42%'), skRowCalc('52%'), sk('sk-text', '80%')));
     let remaining = 20;
     try {
-      const list = await api(`/api/v1/courses/${course.id}/assignments?include[]=submission&per_page=100`, 5);
-      let total = 0, graded = 0;
-      for (const a of list) {
-        const s = a.submission;
-        if (!a.points_possible || a.omit_from_final_grade || (s && s.excused)) continue;
-        total += a.points_possible;
-        if (s && typeof s.score === 'number') graded += a.points_possible;
-      }
-      if (total > 0) remaining = Math.round(((total - graded) / total) * 1000) / 10;
+      const r = await remainingWeight(course);
+      if (r != null) remaining = r;
     } catch (_) { /* keep the manual default */ }
+    if (!box.isConnected) return; // closed while loading
 
     const target = h('input', { type: 'number', min: 0, max: 200, step: 0.5, value: 90 });
     const weight = h('input', { type: 'number', min: 0, max: 100, step: 0.5, value: remaining });
@@ -1360,20 +1484,36 @@
   /* ---------- grade badges on the class cards ---------- */
 
   let courseMap = new Map();   // course id -> { id, name, score }
-  let dataReady = false;
+  let badgeMode = 'off';       // 'skel': data on its way, show placeholders · 'data': real badges
   let cardObserver = null;
   let popHost = null;
 
   const gradeColor = (p) => (p >= 90 ? '#2e9b57' : p >= 80 ? '#3a7bd5' : p >= 70 ? '#d9992b' : '#d9534f');
+  const cardCourseId = (card) => {
+    const a = card.querySelector('a[href*="/courses/"]');
+    const m = a && a.getAttribute('href').match(/\/courses\/(\d+)/);
+    return m ? m[1] : null;
+  };
 
-  /** Add a grade badge to every dashboard card that doesn't have one yet. */
+  /** Add a grade badge to every dashboard card that doesn't have one yet. While the grades
+   *  load, cards that had a badge last time (any card, the very first time) get a placeholder. */
   function decorateCards() {
-    if (!dataReady || !settings.gpa.enabled) return;
-    for (const card of document.querySelectorAll('.ic-DashboardCard:not([data-mc-badged])')) {
+    if (badgeMode === 'off' || !settings.gpa.enabled) return;
+    if (badgeMode === 'skel') {
+      const shape = readShape();
+      const had = shape && Array.isArray(shape.graded) ? new Set(shape.graded.map(String)) : null;
+      for (const card of document.querySelectorAll('.ic-DashboardCard:not([data-mc-badged])')) {
+        card.setAttribute('data-mc-badged', 'skel');
+        if (had && !had.has(cardCourseId(card))) continue;
+        card.append(h('span', { class: 'mc-grade mc-grade-skel', 'aria-hidden': 'true' }));
+      }
+      return;
+    }
+    for (const card of document.querySelectorAll('.ic-DashboardCard:not([data-mc-badged="1"])')) {
+      for (const s of card.querySelectorAll(':scope > .mc-grade-skel')) s.remove();
       card.setAttribute('data-mc-badged', '1'); // mark even without a grade so we never rescan it
-      const a = card.querySelector('a[href*="/courses/"]');
-      const m = a && a.getAttribute('href').match(/\/courses\/(\d+)/);
-      const course = m && courseMap.get(m[1]);
+      const id = cardCourseId(card);
+      const course = id && courseMap.get(id);
       if (!course) continue;
       const calc = settings.gpa.calculator;
       const badge = h('button', {
@@ -1381,7 +1521,12 @@
         title: calc ? 'Click: what grade do I need?' : 'Current grade',
         style: `background:${gradeColor(course.score)}`
       }, `${course.score.toFixed(1)}%`);
-      if (calc) badge.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); openCalc(badge, course); });
+      if (calc) {
+        badge.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); openCalc(badge, course); });
+        const warm = () => { if (extAlive()) remainingWeight(course).catch(() => {}); };
+        badge.addEventListener('pointerenter', warm, { once: true });
+        badge.addEventListener('focus', warm, { once: true });
+      }
       card.append(badge);
     }
   }
@@ -1446,7 +1591,7 @@
     closeCalc();
     hideTip();
     if (cardObserver) { cardObserver.disconnect(); cardObserver = null; }
-    dataReady = false;
+    badgeMode = 'off';
     clearBadges();
   }
   function clearBadges() {
@@ -1455,6 +1600,9 @@
   }
 
   let quietRefresh = null; // set by the current mount: fetch fresh data, redraw if changed
+
+  // Back online after a failed load: try again straight away instead of waiting for a reload.
+  addEventListener('online', () => { if (quietRefresh && extAlive()) quietRefresh(); });
 
   /** (Re)build the panel as soon as the page's HTML is ready. Building it is cheap; the
    *  data comes from the cache or from requests already started at load. */
@@ -1473,9 +1621,36 @@
     const wantTodo = settings.todo.enabled, wantGrades = settings.gpa.enabled;
     if (!wantTodo && !wantGrades) return;
     if (!onDashboard()) return;
+    const cached = readCache();
 
     // To-do panel goes at the top of the RIGHT sidebar only.
-    let body = null;
+    // body > [todoSlot, gradSlot]: the two cards are replaced independently, so the grading
+    // lists arriving later (or changing alone) never rebuild the to-do list you're using.
+    let body = null, todoSlot = null, gradSlot = null;
+    const setCollapsedUi = (c) => {
+      flag('data-mc-todo-collapsed', c);
+      if (body) body.classList.toggle('is-collapsed', c);
+      if (host) host.classList.toggle('mc-collapsed', c);
+    };
+    const storedCollapsed = () => { try { return localStorage.getItem('mc-todo-collapsed') === '1'; } catch (_) { return false; } };
+    /** Placeholders shaped like the last real panel, until data arrives. */
+    const showSkeleton = () => {
+      if (!body) return;
+      const collapsed = storedCollapsed();
+      setCollapsedUi(collapsed); // the sidebar gets its final width right away
+      const shape = readShape() || {};
+      const groups = collapsed ? 0 : skNum(shape.grading, 0, 4);
+      todoSlot.replaceChildren(skelTodo(collapsed));
+      gradSlot.replaceChildren(...(groups ? [skelGrading(groups)] : []));
+    };
+    const skelBadges = () => {
+      if (!wantGrades) return;
+      badgeMode = 'skel';
+      clearBadges();
+      decorateCards();
+      watchCards();
+    };
+
     // Mount in the wrapper *around* #right-side: Canvas re-renders the contents
     // of #right-side itself and would wipe our panel.
     const side = document.getElementById('right-side');
@@ -1486,47 +1661,110 @@
       const shadow = me.attachShadow({ mode: 'open' });
       const link = h('link', { rel: 'stylesheet', href: chrome.runtime.getURL('styles/widgets.css') });
       link.addEventListener('load', () => (me.style.visibility = 'visible'));
-      body = h('div', { class: 'mc' }, h('p', { class: 'muted' }, 'Loading…'));
+      todoSlot = h('div');
+      gradSlot = h('div');
+      body = h('div', { class: 'mc' }, todoSlot, gradSlot);
       shadow.append(link, body, makeGrip(me));
       side.before(me);
     }
 
-    let drawn = ''; // JSON of the data currently shown, so unchanged refreshes do nothing
+    // JSON of what each part currently shows, so unchanged refreshes do nothing.
+    let todoSig = '', gradSig = '', badgeSig = '', colorOf = new Map(), lastGrading = null, failed = false;
     const draw = (data) => {
-      const sig = JSON.stringify(data);
-      if (sig === drawn) return;
-      const redraw = !!drawn;
-      drawn = sig;
-      courseMap = new Map(data.courses.map((c) => [String(c.id), c]));
-      dataReady = true;
+      const staff = data.staff || [];
+      // Early (to-do only) data while grading lists already show: keep those until fresh ones come.
+      if (data.grading == null && lastGrading) data = { ...data, grading: lastGrading };
+      const pending = data.grading == null;
       if (body) {
-        const gpa = settings.gpa.showGpa ? computeGpa(data.courses, settings.gpa.scale) : null;
-        const grading = data.grading || [], staff = data.staff || [];
-        const colorOf = assignCourseColors(
-          [...data.items, ...staff.map((c) => ({ cid: c.id, course: c.name }))], data.colors);
-        // The Calendar (any tab) uses these same colours: Canvas's for every class, the panel's
-        // own choice where it differs.
-        saveCourseColors(new Map([...Object.entries(data.colors || {}), ...colorOf].map(([id, c]) => [String(id), c])));
-        const todoCard = buildTodo(data.items, gpa, colorOf, (c) => { body.classList.toggle('is-collapsed', c); if (host) host.classList.toggle('mc-collapsed', c); });
-        body.replaceChildren(todoCard, buildGrading(grading, staff, colorOf) || '');
+        const tSig = JSON.stringify([data.items, data.courses, data.colors, staff]);
+        const gSig = pending ? 'pending' : JSON.stringify(data.grading);
+        const todoChanged = tSig !== todoSig;
+        if (todoChanged) {
+          colorOf = assignCourseColors(
+            [...data.items, ...staff.map((c) => ({ cid: c.id, course: c.name }))], data.colors);
+          // The Calendar (any tab) uses these same colours: Canvas's for every class, the panel's
+          // own choice where it differs.
+          saveCourseColors(new Map([...Object.entries(data.colors || {}), ...colorOf].map(([id, c]) => [String(id), c])));
+          const gpa = settings.gpa.showGpa ? computeGpa(data.courses, settings.gpa.scale) : null;
+          todoSlot.replaceChildren(buildTodo(data.items, gpa, colorOf, setCollapsedUi));
+        }
+        if (todoChanged || gSig !== gradSig) { // new colours also mean redrawing the grading card
+          const card = buildGrading(pending ? null : data.grading, staff, colorOf);
+          gradSlot.replaceChildren(...(card ? [card] : []));
+          if (!pending) rememberShape(data);
+        }
+        todoSig = tSig;
+        gradSig = gSig;
       }
+      if (!pending) lastGrading = data.grading;
+      failed = false;
       if (wantGrades) {
-        if (redraw) { closeCalc(); clearBadges(); } // grades may have changed: rebuild the card badges
-        decorateCards(); watchCards();
+        const cSig = JSON.stringify(data.courses);
+        if (cSig !== badgeSig) {
+          if (badgeSig) { closeCalc(); remainingCache.clear(); } // grades changed
+          if (badgeMode !== 'skel') clearBadges(); // placeholders are swapped card by card instead
+          badgeSig = cSig;
+          courseMap = new Map(data.courses.map((c) => [String(c.id), c]));
+          badgeMode = 'data';
+          decorateCards(); watchCards();
+        }
       } else closeCalc();
+    };
+    /** Save what the skeleton should look like next time (as the panel first appears). */
+    const rememberShape = (data) => {
+      const patch = { grading: Math.min(4, (data.staff || []).length), graded: data.courses.map((c) => String(c.id)) };
+      if (!todoSlot.querySelector('.card.collapsed')) {
+        patch.today = todoSlot.querySelectorAll('.today li').length;
+        patch.rows = todoSlot.querySelectorAll('.days li').length;
+        patch.days = todoSlot.querySelectorAll('.days .day').length;
+      }
+      saveShape(patch);
+    };
+
+    const showError = () => {
+      failed = true;
+      const offline = !navigator.onLine;
+      todoSlot.replaceChildren(storedCollapsed()
+        ? h('section', { class: 'card collapsed', role: 'alert' },
+            h('button', { class: 'toggle', type: 'button', title: "Couldn't load your to-do list. Try again",
+              'aria-label': "Couldn't load your to-do list. Try again", onclick: retry }, '↻'),
+            h('p', { class: 'muted small' }, offline ? 'Offline' : 'Retry'))
+        : h('section', { class: 'card error', role: 'alert' },
+            h('h3', null, "Couldn't load your to-do list"),
+            h('p', { class: 'muted' }, offline
+              ? "You're offline. It will load by itself once you're back online."
+              : "Canvas didn't answer in time. It usually works on a second try."),
+            h('button', { class: 'retry', type: 'button', onclick: retry }, 'Try again')));
+      gradSlot.replaceChildren();
     };
     const refresh = async () => {
       try {
-        const data = await fetchData();
+        const data = await fetchData((p) => { if (mine === gen) draw(p); });
         if (mine === gen) draw(data); // skip if superseded by a newer mount
       } catch (_) {
-        if (mine === gen && body && !drawn) body.replaceChildren(h('p', { class: 'muted' }, "My Canvas couldn't load your data. Try refreshing."));
+        if (mine !== gen) return;
+        if (body && !todoSig) showError();
+        else if (body && gradSig === 'pending') { gradSlot.replaceChildren(); gradSig = ''; } // to-do shown, grading never came
+        if (wantGrades && !badgeSig) { badgeMode = 'off'; clearBadges(); }
+        if (!body && !badgeSig) failed = true;
       }
     };
-    quietRefresh = refresh;
+    function retry() {
+      if (mine !== gen) return;
+      failed = false;
+      if (!todoSig) showSkeleton();
+      if (!badgeSig) skelBadges();
+      refresh();
+    }
+    // Tab shown again / back online: after a failed load start over (with the skeleton),
+    // otherwise refresh quietly in the background.
+    quietRefresh = () => (failed ? retry() : refresh());
 
-    const cached = readCache();
-    if (cached) { try { draw(cached.d); } catch (_) { drawn = ''; } }
-    if (!cached || Date.now() - cached.t >= CACHE_MS) await refresh();
+    let shown = false;
+    if (cached) {
+      try { draw(cached.d); shown = true; } catch (_) { todoSig = gradSig = badgeSig = ''; lastGrading = null; }
+    }
+    if (!shown) { showSkeleton(); skelBadges(); }
+    if (!shown || Date.now() - cached.t >= CACHE_MS) await refresh();
   }
 })();

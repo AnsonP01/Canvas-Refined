@@ -31,6 +31,15 @@ html[data-mc-todo] #right-side { display: none !important; }
   color: #fff; font: 600 12px/1.4 system-ui, sans-serif; cursor: pointer;
   box-shadow: 0 1px 4px rgba(0,0,0,.35);
 }
+/* Placeholder pill while grades load (same size as a "93.4%" badge). Under 50% white, so the
+   dark-mode theme fixer leaves it alone. */
+.mc-grade.mc-grade-skel {
+  width: 54px; height: 23px; padding: 0; pointer-events: none; cursor: default;
+  background: rgba(255, 255, 255, .45); box-shadow: none;
+  animation: mc-grade-pulse 1.6s ease-in-out infinite;
+}
+@keyframes mc-grade-pulse { 50% { opacity: .5; } }
+@media (prefers-reduced-motion: reduce) { .mc-grade.mc-grade-skel { animation: none; } }
 
 /* Wider right sidebar when our to-do panel is on */
 html[data-mc-todo] #right-side-wrapper { width: var(--mc-todo-width, 540px) !important; max-width: 70vw; }
